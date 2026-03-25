@@ -1,0 +1,44 @@
+estimation:
+  rolling_window_quarters: 8
+  smoothness_penalty: 10.0
+  turnover_penalty: 2.0
+  ridge_penalty: 0.01
+  bill_share_penalty: 100.0
+  factor_ridge_penalty: 0.1
+  factor_turnover_penalty: 0.0
+  holdings_benchmark_families:
+    - nominal_treasury_constant_maturity
+  factor_benchmark_families: []
+interval_calibration:
+  abs_error_quantile: 0.9
+  fit_rmse_reference_quantile: 0.5
+  fit_rmse_weight: 0.5
+  fit_multiplier_cap: 2.5
+  low_window_obs_threshold: 8
+  low_window_obs_multiplier: 1.25
+  support_gap_weight: 3.0
+  support_multiplier_cap: 2.5
+  direct_bill_share_half_width: 0.01
+  sector_scale_multipliers:
+    fed: 1.0
+    foreign: 1.5
+    bank: 2.0
+    bank_proxy: 2.25
+    residual: 2.75
+    narrow_proxy: 2.25
+    aggregate: 1.5
+    domestic_direct: 1.75
+  sector_scale_overrides:
+    foreigners_official: 1.35
+    foreigners_private: 1.65
+    bank_us_chartered: 1.9
+    bank_foreign_banking_offices_us: 2.2
+    bank_us_affiliated_areas: 2.3
+    bank_reserve_access_core: 2.1
+    bank_broad_private_depositories_marketable_proxy: 2.35
+    credit_unions_marketable_proxy: 2.4
+    households_nonprofits: 1.9
+    nonfinancial_corporates: 1.7
+    state_local_governments: 1.7
+    deposit_user_narrow_proxy: 2.2
+    domestic_nonbank_residual_broad: 3.0

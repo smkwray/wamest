@@ -1,0 +1,81 @@
+as_of_date,maturity_date,par_value,security_type,description
+2022-03-31,2022-06-30,288.9,Treasury Bill,13-week bill
+2022-03-31,2026-12-11,2200.152,Treasury Note,5-year note
+2022-03-31,2034-07-16,2431.114,Treasury Bond,15-year bond
+2022-03-31,2030-03-02,488.272,Treasury Inflation-Protected Security,10-year TIPS
+2022-03-31,2023-10-15,191.561,Treasury Floating Rate Note,2-year FRN
+2022-06-30,2022-09-29,298.635,Treasury Bill,13-week bill
+2022-06-30,2027-04-02,2207.074,Treasury Note,5-year note
+2022-06-30,2034-11-27,2383.03,Treasury Bond,15-year bond
+2022-06-30,2030-06-15,500.687,Treasury Inflation-Protected Security,10-year TIPS
+2022-06-30,2024-01-23,194.66,Treasury Floating Rate Note,2-year FRN
+2022-09-30,2022-12-30,307.144,Treasury Bill,13-week bill
+2022-09-30,2027-07-23,2211.846,Treasury Note,5-year note
+2022-09-30,2035-04-08,2344.156,Treasury Bond,15-year bond
+2022-09-30,2030-09-24,510.944,Treasury Inflation-Protected Security,10-year TIPS
+2022-09-30,2024-05-01,194.783,Treasury Floating Rate Note,2-year FRN
+2022-12-31,2023-04-01,313.676,Treasury Bill,13-week bill
+2022-12-31,2027-11-12,2212.88,Treasury Note,5-year note
+2022-12-31,2035-08-16,2314.445,Treasury Bond,15-year bond
+2022-12-31,2030-12-30,518.292,Treasury Inflation-Protected Security,10-year TIPS
+2022-12-31,2024-08-05,191.77,Treasury Floating Rate Note,2-year FRN
+2023-03-31,2023-06-30,317.629,Treasury Bill,13-week bill
+2023-03-31,2028-02-28,2208.977,Treasury Note,5-year note
+2023-03-31,2035-12-18,2293.588,Treasury Bond,15-year bond
+2023-03-31,2031-03-30,522.155,Treasury Inflation-Protected Security,10-year TIPS
+2023-03-31,2024-11-04,185.832,Treasury Floating Rate Note,2-year FRN
+2023-06-30,2023-09-29,318.651,Treasury Bill,13-week bill
+2023-06-30,2028-06-15,2199.725,Treasury Note,5-year note
+2023-06-30,2036-04-16,2281.324,Treasury Bond,15-year bond
+2023-06-30,2031-06-23,522.246,Treasury Inflation-Protected Security,10-year TIPS
+2023-06-30,2025-02-01,177.559,Treasury Floating Rate Note,2-year FRN
+2023-09-30,2023-12-30,319.255,Treasury Bill,13-week bill
+2023-09-30,2028-09-30,2203.377,Treasury Note,5-year note
+2023-09-30,2036-08-11,2296.065,Treasury Bond,15-year bond
+2023-09-30,2031-09-13,522.831,Treasury Inflation-Protected Security,10-year TIPS
+2023-09-30,2025-04-29,169.211,Treasury Floating Rate Note,2-year FRN
+2023-12-31,2024-03-31,316.874,Treasury Bill,13-week bill
+2023-12-31,2029-01-12,2202.167,Treasury Note,5-year note
+2023-12-31,2036-12-02,2318.389,Treasury Bond,15-year bond
+2023-12-31,2031-11-29,519.709,Treasury Inflation-Protected Security,10-year TIPS
+2023-12-31,2025-07-23,160.265,Treasury Floating Rate Note,2-year FRN
+2024-03-31,2024-06-30,312.886,Treasury Bill,13-week bill
+2024-03-31,2029-04-23,2204.735,Treasury Note,5-year note
+2024-03-31,2037-03-17,2355.966,Treasury Bond,15-year bond
+2024-03-31,2032-02-09,515.021,Treasury Inflation-Protected Security,10-year TIPS
+2024-03-31,2025-10-12,152.341,Treasury Floating Rate Note,2-year FRN
+2024-06-30,2024-09-29,308.43,Treasury Bill,13-week bill
+2024-06-30,2029-07-30,2217.531,Treasury Note,5-year note
+2024-06-30,2037-06-26,2414.317,Treasury Bond,15-year bond
+2024-06-30,2032-04-17,510.404,Treasury Inflation-Protected Security,10-year TIPS
+2024-06-30,2025-12-31,146.742,Treasury Floating Rate Note,2-year FRN
+2024-09-30,2024-12-30,302.29,Treasury Bill,13-week bill
+2024-09-30,2029-11-04,2229.548,Treasury Note,5-year note
+2024-09-30,2037-09-30,2480.023,Treasury Bond,15-year bond
+2024-09-30,2032-06-22,503.508,Treasury Inflation-Protected Security,10-year TIPS
+2024-09-30,2026-03-19,143.48,Treasury Floating Rate Note,2-year FRN
+2024-12-31,2025-04-01,295.077,Treasury Bill,13-week bill
+2024-12-31,2030-02-05,2241.73,Treasury Note,5-year note
+2024-12-31,2037-12-29,2552.153,Treasury Bond,15-year bond
+2024-12-31,2032-08-25,494.878,Treasury Inflation-Protected Security,10-year TIPS
+2024-12-31,2026-06-05,143.206,Treasury Floating Rate Note,2-year FRN
+2025-03-31,2025-06-30,287.398,Treasury Bill,13-week bill
+2025-03-31,2030-05-05,2254.409,Treasury Note,5-year note
+2025-03-31,2038-03-21,2629.098,Treasury Bond,15-year bond
+2025-03-31,2032-10-25,484.994,Treasury Inflation-Protected Security,10-year TIPS
+2025-03-31,2026-08-20,146.245,Treasury Floating Rate Note,2-year FRN
+2025-06-30,2025-09-29,279.817,Treasury Bill,13-week bill
+2025-06-30,2030-07-30,2267.102,Treasury Note,5-year note
+2025-06-30,2038-06-07,2708.325,Treasury Bond,15-year bond
+2025-06-30,2032-12-24,474.23,Treasury Inflation-Protected Security,10-year TIPS
+2025-06-30,2026-11-04,152.54,Treasury Floating Rate Note,2-year FRN
+2025-09-30,2025-12-30,272.95,Treasury Bill,13-week bill
+2025-09-30,2030-10-23,2279.455,Treasury Note,5-year note
+2025-09-30,2038-08-20,2787.487,Treasury Bond,15-year bond
+2025-09-30,2033-02-24,463.058,Treasury Inflation-Protected Security,10-year TIPS
+2025-09-30,2027-01-22,161.696,Treasury Floating Rate Note,2-year FRN
+2025-12-31,2026-04-01,267.342,Treasury Bill,13-week bill
+2025-12-31,2031-01-13,2290.601,Treasury Note,5-year note
+2025-12-31,2038-10-27,2863.681,Treasury Bond,15-year bond
+2025-12-31,2033-04-28,451.903,Treasury Inflation-Protected Security,10-year TIPS
+2025-12-31,2027-04-11,172.947,Treasury Floating Rate Note,2-year FRN

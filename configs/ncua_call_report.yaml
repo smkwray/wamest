@@ -1,0 +1,28 @@
+ncua:
+  quarterly_data:
+    index_url: "https://ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data"
+    zip_url_pattern: 'href="([^"]*call-report-data-(\d{4})-(\d{2})\.zip)"'
+  member_names:
+    profile: "FOICU.txt"
+    securities: "FS220Q.txt"
+  institution_columns:
+    reporter_id: "CU_NUMBER"
+    bank_name: "CU_NAME"
+    city: "CITY"
+    state: "STATE"
+  cycle_date_columns:
+    - "Cycle_date"
+    - "CYCLE_DATE"
+  filing_type_value: "5300"
+  default_bank_class: "credit_unions"
+  fields:
+    treasury_htm_amortized_cost:
+      - "ACCT_NV0001"
+    treasury_htm_fair_value:
+      - "ACCT_NV0002"
+    treasury_afs_amortized_cost:
+      - "ACCT_NV0003"
+    treasury_afs_fair_value:
+      - "ACCT_NV0004"
+    treasury_trading_fair_value:
+      - "ACCT_NV0087"

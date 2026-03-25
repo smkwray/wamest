@@ -1,0 +1,36 @@
+# Agent orchestration (prompts, handoff, delegates, sparks)
+do/
+
+# Environment
+.env
+
+# Plans
+*.plan.md
+plan.md
+plans/
+
+# Python artifacts (defense in depth — env rules ban these too)
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Data artifacts
+data/external/raw/
+data/external/normalized/
+data/interim/
+data/processed/
+outputs/
+*.parquet
+*.zip
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,13 @@
+Table 3: U.S. Treasury Securities Held by Foreign Residents 1/									
+All Countries and International and Regional Organizations									
+A positive number for net U.S. sales to foreigners denotes an increase in a foreign position									
+Millions of dollars									
+Link: https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table3.txt									
+									
+			Total U.S. Treasuries	Total U.S. Treasuries	Long-term U.S. Treasuries	Long-term U.S. Treasuries	Long-term U.S. Treasuries	Short-term U.S. Treasuries	Short-term U.S. Treasuries
+Country	Country Code	Date	Holdings	Net U.S. Sales	Holdings	Net U.S. Sales	Valuation Change	Holdings	Net U.S. Sales
+country	country_code	date	for_treas_pos	for_treas_neg	long_for_treas_pos	long_for_treas_neg	long_for_treas_val	short_for_treas_pos	short_for_treas_neg
+Grand Total	99996	2025-12	9270975	-13740	8150000	-10000	-5000	1120975	-3740
+Of Which: Foreign Official	99990	2025-12	3886999	-3200	3400000	-2500	-1200	486999	-700
+Of Which: Foreign Non-Official	99991	2025-12	5383976	-10540	4750000	-7500	-3800	633976	-3040
+Grand Total	99996	2025-11	9359310	1000	8220000	900	600	1139310	100

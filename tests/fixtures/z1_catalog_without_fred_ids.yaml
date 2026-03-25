@@ -1,0 +1,5 @@
+series:
+  rest_of_world_total_treasuries:
+    description: "Rest of world Treasury holdings"
+    level: "FL263061105.Q"
+    transactions: "FU263061105.Q"

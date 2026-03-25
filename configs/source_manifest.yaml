@@ -1,0 +1,102 @@
+sources:
+  z1_ddp_choose:
+    name: "Financial Accounts of the United States (Z.1) DDP choose page"
+    url: "https://www.federalreserve.gov/datadownload/choose.aspx?rel=z1"
+    downloadable: false
+    role: "Primary source for Z.1 series downloads"
+    notes:
+      - "Use a selected-series CSV extract or the compressed release CSV package."
+  z1_release_page:
+    name: "Z.1 release page"
+    url: "https://www.federalreserve.gov/releases/z1/"
+    downloadable: false
+    role: "Release notes, PDF, tables, package links"
+  h15_ddp_choose:
+    name: "H.15 DDP choose page"
+    url: "https://www.federalreserve.gov/datadownload/Choose.aspx?rel=H15"
+    downloadable: false
+    role: "Treasury constant-maturity yield downloads"
+  h15_release_page:
+    name: "H.15 release page"
+    url: "https://www.federalreserve.gov/releases/h15/"
+    downloadable: false
+    role: "Reference page for constant-maturity methodology and release timing"
+  soma_holdings_page:
+    name: "NY Fed SOMA holdings"
+    url: "https://www.newyorkfed.org/markets/soma-holdings"
+    downloadable: false
+    role: "Historical Fed domestic securities holdings"
+  nyfed_treasury_securities_page:
+    name: "NY Fed Treasury securities operations / SOMA page"
+    url: "https://www.newyorkfed.org/markets/domestic-market-operations/monetary-policy-implementation/treasury-securities"
+    downloadable: false
+    role: "CUSIP-level SOMA holdings entry point"
+  tic_system_page:
+    name: "Treasury TIC system page"
+    url: "https://home.treasury.gov/data/treasury-international-capital-tic-system"
+    downloadable: false
+    role: "Landing page for TIC data"
+  tic_shl_2024_report:
+    name: "SHL 2024 foreign portfolio holdings survey report"
+    url: "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/shl2024r.pdf"
+    downloadable: true
+    filename: "shl2024r.pdf"
+    role: "Benchmark anchor for foreign Treasury maturity composition"
+  tic_securities_b_page:
+    name: "Treasury TIC securities holdings page"
+    url: "https://home.treasury.gov/data/treasury-international-capital-tic-system-home-page/tic-forms-instructions/securities-b-portfolio-holdings-of-us-and-foreign-securities"
+    downloadable: false
+    role: "SLT long-term holdings tables and related TIC notes"
+  tic_release_dates:
+    name: "TIC release dates page"
+    url: "https://home.treasury.gov/data/treasury-international-capital-tic-system/release-dates-of-tic-data"
+    downloadable: false
+    role: "Release schedule for monthly and annual TIC data"
+  ffiec_bulk_data:
+    name: "FFIEC CDR bulk call-report download page"
+    url: "https://cdr.ffiec.gov/public/PWS/DownloadBulkData.aspx"
+    downloadable: false
+    role: "Primary source for commercial-bank call-report bulk downloads"
+  ffiec_031_041_instructions:
+    name: "FFIEC 031/041 instructions"
+    url: "https://www.ffiec.gov/sites/default/files/data/reporting-forms/FFIEC031_FFIEC041_202503_i.pdf"
+    downloadable: true
+    filename: "FFIEC031_FFIEC041_202503_i.pdf"
+    role: "Field definitions for commercial-bank call-report schedules"
+  ffiec_051_instructions:
+    name: "FFIEC 051 instructions"
+    url: "https://www.ffiec.gov/sites/default/files/data/reporting-forms/FFIEC051_202503_i.pdf"
+    downloadable: true
+    filename: "FFIEC051_202503_i.pdf"
+    role: "Field definitions for community-bank call-report schedules"
+  nic_search_institutions:
+    name: "NIC search institutions page"
+    url: "https://www.ffiec.gov/npw/"
+    downloadable: false
+    role: "Browser entry point for enumerating active U.S. branches and agencies of foreign banking organizations"
+  nic_structure_download:
+    name: "NIC structure data download page"
+    url: "https://www.ffiec.gov/npw/FinancialReport/DataDownload"
+    downloadable: false
+    role: "Reference page for NIC CSV/XML structure downloads"
+  ffiec002_csv_endpoint_pattern:
+    name: "NIC FFIEC 002 per-institution CSV endpoint pattern"
+    url: "https://www.ffiec.gov/npw/FinancialReport/ReturnFinancialReportCSV?rpt=FFIEC002&id=<RSSD>&dt=<YYYYMMDD>"
+    downloadable: true
+    role: "Quarterly FFIEC 002 CSV filings for individual foreign-bank offices"
+  ffiec002_instructions:
+    name: "FFIEC 002 instructions"
+    url: "https://www.ffiec.gov/sites/default/files/data/reporting-forms/FFIEC002_202512_i.pdf"
+    downloadable: true
+    filename: "FFIEC002_202512_i.pdf"
+    role: "Field definitions for U.S. branches and agencies of foreign banks"
+  ncua_call_reports:
+    name: "NCUA credit union and corporate call-report data"
+    url: "https://ncua.gov/analysis/credit-union-corporate-call-report-data"
+    downloadable: false
+    role: "Landing page for natural-person and corporate credit-union call-report data"
+  ncua_quarterly_call_report_data:
+    name: "NCUA quarterly natural-person call-report ZIP index"
+    url: "https://ncua.gov/analysis/credit-union-corporate-call-report-data/quarterly-data"
+    downloadable: false
+    role: "Primary source for natural-person credit-union quarterly bulk ZIP files"

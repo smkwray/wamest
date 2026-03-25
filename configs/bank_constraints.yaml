@@ -1,0 +1,42 @@
+bank_constraints:
+  all_commercial_banks:
+    sector_key: "bank_us_chartered"
+    notes:
+      - "FFIEC single-period bulk call-report files cover commercial bank filers."
+      - "Foreign banking offices in the U.S. file separate FFIEC 002 reports and are not included here."
+      - "Constraint shares are based on Schedule RC-B remaining-maturity buckets."
+  foreign_banking_offices_us:
+    sector_key: "bank_foreign_banking_offices_us"
+    level_column: "us_treasury_securities"
+    notes:
+      - "FFIEC 002 is fetched from NIC per-institution CSV filings for active U.S. branches and agencies of foreign banking organizations."
+      - "Constraint level uses Schedule RAL 1.b.(1) U.S. Treasury securities."
+      - "FFIEC 002 does not publish a Treasury maturity ladder, so share constraints remain blank."
+  credit_unions:
+    sector_key: "credit_unions_marketable_proxy"
+    level_column: "total_treasuries_level_proxy"
+    notes:
+      - "NCUA natural-person 5300 quarterly ZIP files expose U.S. government obligations levels by accounting treatment."
+      - "NCUA does not publish Treasury-specific maturity ladders in the public quarterly bulk package."
+      - "Constraint level uses a mixed-basis proxy: HTM/AFS amortized cost plus trading fair value."
+  affiliated_areas_supplement:
+    sector_key: "bank_us_affiliated_areas"
+    supplement_only: true
+    notes:
+      - "Public FFIEC and NCUA bulk packages do not cover banks in U.S.-affiliated areas."
+      - "Use optional supplement rows keyed directly to bank_us_affiliated_areas when an auxiliary perimeter source is available."
+      - "Supplement rows are perimeter-support inputs and should not be labeled as FFIEC or NCUA institution coverage."
+  reserve_access_core_supplement:
+    sector_key: "bank_reserve_access_core"
+    supplement_only: true
+    notes:
+      - "Reserve-access core is a composite bank perimeter, not a directly observed public institution file."
+      - "Use optional supplement rows keyed directly to bank_reserve_access_core when an auxiliary reserve-access perimeter source is available."
+      - "Direct supplement rows take precedence over weaker formula-derived bank-core identified sets."
+  broad_private_depositories_supplement:
+    sector_key: "bank_broad_private_depositories_marketable_proxy"
+    supplement_only: true
+    notes:
+      - "Broad private depositories proxy is a composite bank perimeter, not a directly observed public institution file."
+      - "Use optional supplement rows keyed directly to bank_broad_private_depositories_marketable_proxy when an auxiliary perimeter source is available."
+      - "Direct supplement rows take precedence over weaker formula-derived broad-bank identified sets."

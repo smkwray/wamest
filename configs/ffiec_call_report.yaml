@@ -1,0 +1,54 @@
+ffiec:
+  bulk_download:
+    url: "https://cdr.ffiec.gov/public/PWS/DownloadBulkData.aspx"
+    product_event_target: "ctl00$MainContentHolder$ListBox1"
+    product_field: "ctl00$MainContentHolder$ListBox1"
+    product_value: "ReportingSeriesSinglePeriod"
+    report_date_select_id: "DatesDropDownList"
+    report_date_field: "ctl00$MainContentHolder$DatesDropDownList"
+    format_field: "ctl00$MainContentHolder$FormatType"
+    format_value: "TSVRadioButton"
+    download_button_field: "ctl00$MainContentHolder$TabStrip1$Download_0"
+    download_button_value: "Download"
+  member_tokens:
+    por: "Call Bulk POR"
+    rcb: "Call Schedule RCB"
+  institution_columns:
+    reporter_id: "IDRSSD"
+    bank_name: "Financial Institution Name"
+    city: "Financial Institution City"
+    state: "Financial Institution State"
+    filing_type: "Financial Institution Filing Type"
+  default_bank_class: "all_commercial_banks"
+  fields:
+    treasury_htm_amortized_cost:
+      - "RCFD0211"
+      - "RCON0211"
+    treasury_htm_fair_value:
+      - "RCFD0213"
+      - "RCON0213"
+    treasury_afs_amortized_cost:
+      - "RCFD1286"
+      - "RCON1286"
+    treasury_afs_fair_value:
+      - "RCFD1287"
+      - "RCON1287"
+  maturity_buckets:
+    treasury_bucket_3m_or_less:
+      - "RCFDA549"
+      - "RCONA549"
+    treasury_bucket_3_12m:
+      - "RCFDA550"
+      - "RCONA550"
+    treasury_bucket_1_3y:
+      - "RCFDA551"
+      - "RCONA551"
+    treasury_bucket_3_5y:
+      - "RCFDA552"
+      - "RCONA552"
+    treasury_bucket_5_15y:
+      - "RCFDA553"
+      - "RCONA553"
+    treasury_bucket_over_15y:
+      - "RCFDA554"
+      - "RCONA554"

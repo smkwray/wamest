@@ -1,0 +1,22 @@
+ffiec002:
+  npw:
+    browser_entry_url: "https://www.ffiec.gov/npw/"
+    search_endpoint: "/npw/Institution/Search"
+    report_csv_endpoint: "/npw/FinancialReport/ReturnFinancialReportCSV"
+    entity_group: "USBA"
+    country_code: "1007"
+    id_type: "fdic-cert"
+    statuses:
+      - "Active"
+    report_code: "FFIEC002"
+    batch_size: 10
+    timeout_seconds: 120
+    headless: false
+  default_bank_class: "foreign_banking_offices_us"
+  fields:
+    us_treasury_securities:
+      - "0260"
+    trading_treasury_and_agency_combined:
+      - "K479"
+    pledged_us_government_securities:
+      - "2785"

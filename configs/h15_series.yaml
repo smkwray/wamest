@@ -1,0 +1,103 @@
+h15:
+  nominal_treasury_constant_maturity:
+    fed_package_query: "rel=H15&series=bf17364827e38702b42a58cf8eaa3f78&lastobs=&from=&to=&filetype=csv&label=include&layout=seriescolumn&type=package"
+    fed_codes:
+      1m: "RIFLGFCM01_N.B"
+      3m: "RIFLGFCM03_N.B"
+      6m: "RIFLGFCM06_N.B"
+      1y: "RIFLGFCY01_N.B"
+      2y: "RIFLGFCY02_N.B"
+      3y: "RIFLGFCY03_N.B"
+      5y: "RIFLGFCY05_N.B"
+      7y: "RIFLGFCY07_N.B"
+      10y: "RIFLGFCY10_N.B"
+      20y: "RIFLGFCY20_N.B"
+      30y: "RIFLGFCY30_N.B"
+    fred_ids:
+      1m: "DGS1MO"
+      3m: "DGS3MO"
+      6m: "DGS6MO"
+      1y: "DGS1"
+      2y: "DGS2"
+      3y: "DGS3"
+      5y: "DGS5"
+      7y: "DGS7"
+      10y: "DGS10"
+      20y: "DGS20"
+      30y: "DGS30"
+    notes:
+      - Parser can usually read a wide H.15 Treasury-constant-maturity CSV directly.
+      - This config also maps the Fed DDP package codes and the FRED series ids for the same maturity grid.
+    expected_columns:
+      - 1m
+      - 3m
+      - 6m
+      - 1y
+      - 2y
+      - 3y
+      - 5y
+      - 7y
+      - 10y
+      - 20y
+      - 30y
+  tips_real_yield_constant_maturity:
+    value_prefix: "tips"
+    fred_ids:
+      5y: "DFII5"
+      7y: "DFII7"
+      10y: "DFII10"
+      20y: "DFII20"
+      30y: "DFII30"
+    notes:
+      - Real-yield constant-maturity TIPS are currently wired through FRED ids.
+      - Output labels are prefixed as `tips_*` so they can coexist with nominal ladders in a merged benchmark panel.
+    expected_columns:
+      - tips_5y
+      - tips_7y
+      - tips_10y
+      - tips_20y
+      - tips_30y
+  frn_proxy_from_nominal:
+    proxy_type: "frn"
+    source_curve_key: "nominal_treasury_constant_maturity"
+    value_prefix: "frn"
+    base_label: "3m"
+    output_label: "frn_3m"
+    carry_years: 0.25
+    duration_years: 0.25
+    notes:
+      - FRN proxy returns are derived from the nominal 3-month Treasury constant-maturity yield.
+      - This is a low-duration price-return proxy, not a legal-maturity or issue-specific FRN total-return series.
+    expected_columns:
+      - frn_3m
+  key_rate_buckets_from_nominal:
+    proxy_type: "key_rate"
+    source_curve_key: "nominal_treasury_constant_maturity"
+    value_prefix: "kr"
+    bucket_labels:
+      - 1m
+      - 3m
+      - 6m
+      - 1y
+      - 2y
+      - 3y
+      - 5y
+      - 7y
+      - 10y
+      - 20y
+      - 30y
+    notes:
+      - Key-rate bucket returns are derived from quarter-over-quarter yield changes at the nominal constant-maturity nodes.
+      - They isolate node-level repricing without carry or roll-down, so they can coexist with the full benchmark-return ladders.
+    expected_columns:
+      - kr_1m
+      - kr_3m
+      - kr_6m
+      - kr_1y
+      - kr_2y
+      - kr_3y
+      - kr_5y
+      - kr_7y
+      - kr_10y
+      - kr_20y
+      - kr_30y

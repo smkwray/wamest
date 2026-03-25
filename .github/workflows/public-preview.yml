@@ -1,0 +1,70 @@
+name: Public Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: "Quarter-end date used for the public preview"
+        required: false
+        default: "2025-12-31"
+      quarters:
+        description: "Trailing quarter count retained in the public preview output"
+        required: false
+        default: "40"
+      source_provider:
+        description: "Public source provider"
+        required: false
+        default: "fed"
+      include_optional_bank_paths:
+        description: "Include optional bank perimeter paths"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 14 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  public-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PREVIEW_END_DATE: ${{ github.event.inputs.end_date || '2025-12-31' }}
+      PREVIEW_QUARTERS: ${{ github.event.inputs.quarters || '40' }}
+      PREVIEW_SOURCE_PROVIDER: ${{ github.event.inputs.source_provider || 'fed' }}
+      INCLUDE_OPTIONAL_BANK_PATHS: ${{ github.event.inputs.include_optional_bank_paths || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Run public release hygiene checks
+        run: make release-check
+
+      - name: Build public preview
+        run: |
+          args="--end-date ${PREVIEW_END_DATE} --quarters ${PREVIEW_QUARTERS}"
+          if [ "${INCLUDE_OPTIONAL_BANK_PATHS}" = "true" ]; then
+            args="${args} --include-optional-bank-paths"
+          fi
+          make public-preview PUBLIC_PREVIEW_SOURCE_PROVIDER="${PREVIEW_SOURCE_PROVIDER}" PUBLIC_PREVIEW_ARGS="${args}"
+
+      - name: Upload public preview artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-preview
+          path: outputs/public_preview
+          if-no-files-found: error

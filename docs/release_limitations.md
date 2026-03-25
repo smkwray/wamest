@@ -1,0 +1,62 @@
+# Release limitations
+
+This repository is a **public research preview**, not a finished production package.
+
+## Stable default path
+
+The default public path is:
+
+- nominal H.15 benchmark ladders only
+- pinned to `configs/model_public_preview.yaml`
+- public, non-interactive source acquisition
+- script-first usage from `scripts/`
+- release output focused on the markdown metadata report and the sector panel it summarizes
+
+That path is the intended public baseline for the first release preview.
+
+## Optional and experimental paths
+
+These paths are supported in the repository but are not part of the stable public baseline:
+
+- TIPS real-yield benchmark ladders
+- FRN proxy benchmark ladders
+- key-rate factor buckets
+- FFIEC 002 browser-backed fetching
+- uncovered bank-perimeter supplement rows
+- hybrid benchmark estimation runs that combine nominal, TIPS, FRN, and factor blocks
+
+These workflows are useful for analysis, but they are more fragile than the default nominal-only path and may require additional inputs or manual steps.
+
+The standalone `scripts/calibrate_fed.py` and `scripts/estimate_effective_maturity.py` defaults now use the broader hybrid research config in `configs/model_defaults.yaml`; the public preview remains pinned to the nominal-only config above.
+
+## Sector caveats
+
+- **Fed / SOMA**: strongest public benchmark and calibration set.
+- **Foreigners**: annual SHL anchors plus monthly SLT nowcasts, with assumption bands between anchors.
+- **Banks**: maturity composition is not fully observed from public sources; bill-share constraints and supplemental perimeter rows help, but they do not make the sector fully exact.
+- **Domestic residuals**: useful and exact on levels by identity, but maturity inference is still an inverse problem and should be treated as such.
+
+## What is intentionally not promised
+
+- package-manager-grade CLI stability
+- a committed public-data snapshot
+- identical observability across all sectors
+- one-number certainty for weakly observed sector maturity
+- a guarantee that optional bank-perimeter workflows are available without additional public inputs
+
+## Public-facing language to prefer
+
+Use:
+
+- research preview
+- script-first
+- default nominal-only path
+- optional experimental extensions
+- release limitations
+
+Avoid:
+
+- starter-project language
+- production-ready
+- complete sector observability
+- exact maturity for every block

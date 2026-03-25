@@ -1,0 +1,160 @@
+series:
+  all_sectors_treasuries_asset:
+    description: "Total marketable Treasury asset holdings across sectors"
+    base_code: "893061105"
+    fred_ids:
+      level: "BOGZ1FL893061105Q"
+      transactions: "BOGZ1FU893061105Q"
+      revaluation: "BOGZ1FR893061105Q"
+      other_volume: null
+
+  monetary_authority_total_treasuries:
+    description: "Monetary authority Treasury holdings"
+    base_code: "713061103"
+    fred_ids:
+      level: "BOGZ1FL713061103Q"
+      transactions: "BOGZ1FU713061103Q"
+      revaluation: "BOGZ1FR713061103Q"
+      other_volume: null
+
+  monetary_authority_bills:
+    description: "Monetary authority Treasury bills"
+    base_code: "713061113"
+    fred_ids:
+      level: "BOGZ1FL713061113Q"
+      transactions: "BOGZ1FU713061113Q"
+      revaluation: "BOGZ1FR713061113Q"
+      other_volume: null
+
+  rest_of_world_total_treasuries:
+    description: "Rest of world Treasury holdings"
+    base_code: "263061105"
+    fred_ids:
+      level: "BOGZ1LM263061105Q"
+      transactions: "BOGZ1FU263061105Q"
+      revaluation: "BOGZ1FR263061105Q"
+      other_volume: null
+
+  rest_of_world_bills_and_certificates:
+    description: "Rest of world Treasury bills and certificates"
+    base_code: "263061110"
+    fred_ids:
+      level: "BOGZ1FL263061110Q"
+      transactions: "BOGZ1FU263061110Q"
+      revaluation: "BOGZ1FR263061110Q"
+      other_volume: null
+
+  rest_of_world_official_total_treasuries:
+    description: "Foreign official Treasury holdings"
+    base_code: "263061130"
+    fred_ids:
+      level: "BOGZ1FL263061130Q"
+      transactions: "BOGZ1FU263061130Q"
+      revaluation: "BOGZ1FR263061130Q"
+      other_volume: null
+
+  rest_of_world_official_bills_and_certificates:
+    description: "Foreign official Treasury bills and certificates"
+    base_code: "263061160"
+    fred_ids:
+      level: "BOGZ1FL263061160Q"
+      transactions: "BOGZ1FU263061160Q"
+      revaluation: "BOGZ1FR263061160Q"
+      other_volume: null
+
+  rest_of_world_private_total_treasuries:
+    description: "Foreign private Treasury holdings"
+    computed: "rest_of_world_total_treasuries - rest_of_world_official_total_treasuries"
+    notes:
+      - "Computed as total minus official when direct series is unavailable."
+
+  rest_of_world_private_bills_and_certificates:
+    description: "Foreign private Treasury bills and certificates"
+    computed: "rest_of_world_bills_and_certificates - rest_of_world_official_bills_and_certificates"
+    notes:
+      - "Computed as total minus official when direct series is unavailable."
+
+  us_chartered_depositories_total_treasuries:
+    description: "U.S.-chartered depository institutions Treasury holdings"
+    base_code: "763061100"
+    fred_ids:
+      level: "BOGZ1FL763061100Q"
+      transactions: "BOGZ1FU763061100Q"
+      revaluation: "BOGZ1FR763061100Q"
+      other_volume: null
+
+  foreign_banking_offices_us_total_treasuries:
+    description: "Foreign banking offices in the U.S. Treasury holdings"
+    base_code: "753061103"
+    fred_ids:
+      level: "BOGZ1FL753061103Q"
+      transactions: "BOGZ1FU753061103Q"
+      revaluation: "BOGZ1FR753061103Q"
+      other_volume: null
+
+  banks_us_affiliated_areas_total_treasuries:
+    description: "Banks in U.S.-affiliated areas Treasury holdings"
+    base_code: "743061103"
+    fred_ids:
+      level: "BOGZ1FL743061103Q"
+      transactions: "BOGZ1FU743061103Q"
+      revaluation: "BOGZ1FR743061103Q"
+      other_volume: null
+
+  credit_unions_excluding_corporates_treasuries:
+    description: "Credit unions excluding corporate credit unions Treasury holdings"
+    base_code: "473061103"
+    fred_ids:
+      level: "BOGZ1FL473061103Q"
+      transactions: "BOGZ1FU473061103Q"
+      revaluation: "BOGZ1FR473061103Q"
+      other_volume: null
+
+  credit_unions_corporate_credit_union_treasuries:
+    description: "Corporate credit unions Treasury holdings"
+    base_code: "473061153"
+    fred_ids:
+      level: "BOGZ1FL473061153Q"
+      transactions: "BOGZ1FU473061153Q"
+      revaluation: "BOGZ1FR473061153Q"
+      other_volume: null
+
+  credit_unions_marketable_treasury_proxy:
+    description: "Marketable Treasury proxy for credit unions"
+    computed: "credit_unions_excluding_corporates_treasuries + credit_unions_corporate_credit_union_treasuries"
+
+  private_depositories_reported_total_treasuries:
+    description: "Private depository institutions Treasury holdings"
+    base_code: "703061105"
+    fred_ids:
+      level: "BOGZ1FL703061105Q"
+      transactions: "BOGZ1FU703061105Q"
+      revaluation: "BOGZ1FR703061105Q"
+      other_volume: null
+
+  households_nonprofits_treasuries_residual:
+    description: "Households and nonprofits Treasury holdings (residual concept)"
+    base_code: "153061105"
+    fred_ids:
+      level: "BOGZ1LM153061105Q"
+      transactions: "BOGZ1FU153061105Q"
+      revaluation: "BOGZ1FR153061105Q"
+      other_volume: null
+
+  nonfinancial_corporate_treasuries:
+    description: "Nonfinancial corporate business Treasury holdings"
+    base_code: "103061103"
+    fred_ids:
+      level: "TSABSNNCB"
+      transactions: "BOGZ1FU103061103Q"
+      revaluation: "BOGZ1FR103061103Q"
+      other_volume: null
+
+  state_local_governments_treasuries_ex_slgs:
+    description: "State and local government Treasury holdings excluding SLGs"
+    base_code: "213061103"
+    fred_ids:
+      level: "BOGZ1FL213061103Q"
+      transactions: "BOGZ1FU213061103Q"
+      revaluation: "BOGZ1FR213061103Q"
+      other_volume: null

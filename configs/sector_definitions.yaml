@@ -1,0 +1,94 @@
+sectors:
+  all_holders_total:
+    label: "All sector holdings total"
+    level_series: "all_sectors_treasuries_asset"
+    method_priority: ["direct_z1"]
+
+  fed:
+    label: "Monetary authority / Fed"
+    level_series: "monetary_authority_total_treasuries"
+    bills_series: "monetary_authority_bills"
+    method_priority: ["direct_z1", "exact_soma_overlay"]
+
+  foreigners_total:
+    label: "Foreigners total"
+    level_series: "rest_of_world_total_treasuries"
+    bills_series: "rest_of_world_bills_and_certificates"
+    method_priority: ["direct_z1", "shl_slt_anchor"]
+
+  foreigners_official:
+    label: "Foreign official"
+    level_series: "rest_of_world_official_total_treasuries"
+    bills_series: "rest_of_world_official_bills_and_certificates"
+    method_priority: ["direct_z1", "shl_slt_anchor"]
+
+  foreigners_private:
+    label: "Foreign private"
+    level_series: "rest_of_world_private_total_treasuries"
+    bills_series: "rest_of_world_private_bills_and_certificates"
+    method_priority: ["computed_from_total_minus_official", "shl_slt_anchor"]
+
+  bank_us_chartered:
+    label: "U.S.-chartered depositories"
+    level_series: "us_chartered_depositories_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference"]
+
+  bank_foreign_banking_offices_us:
+    label: "Foreign banking offices in the U.S."
+    level_series: "foreign_banking_offices_us_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  bank_us_affiliated_areas:
+    label: "Banks in U.S.-affiliated areas"
+    level_series: "banks_us_affiliated_areas_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  credit_unions_marketable_proxy:
+    label: "Credit unions marketable Treasury proxy"
+    level_series: "credit_unions_marketable_treasury_proxy"
+    method_priority: ["computed_series_proxy", "revaluation_inference_weak"]
+
+  bank_reserve_access_core:
+    label: "Banks reserve-access core"
+    formula_level: "bank_us_chartered + bank_foreign_banking_offices_us"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Definition excludes banks in U.S.-affiliated areas and credit unions."
+
+  bank_broad_private_depositories_marketable_proxy:
+    label: "Banks broad private-depositories marketable proxy"
+    formula_level: "bank_us_chartered + bank_foreign_banking_offices_us + bank_us_affiliated_areas + credit_unions_marketable_proxy"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Proxy excludes nonmarketable or mixed-instrument contamination only to the extent upstream series do."
+
+  households_nonprofits:
+    label: "Households and nonprofits"
+    level_series: "households_nonprofits_treasuries_residual"
+    method_priority: ["direct_z1_residual_style"]
+    warnings:
+      - "Household/nonprofit Treasury holdings are not a clean retail concept."
+
+  nonfinancial_corporates:
+    label: "Nonfinancial corporate business"
+    level_series: "nonfinancial_corporate_treasuries"
+    method_priority: ["direct_z1"]
+
+  state_local_governments:
+    label: "State and local governments"
+    level_series: "state_local_governments_treasuries_ex_slgs"
+    method_priority: ["direct_z1"]
+
+  deposit_user_narrow_proxy:
+    label: "Deposit-user narrow proxy"
+    formula_level: "households_nonprofits + nonfinancial_corporates + state_local_governments"
+    method_priority: ["computed_identity"]
+    warnings:
+      - "Narrow proxy omits some domestic non-bank Treasury holders."
+
+  domestic_nonbank_residual_broad:
+    label: "Domestic non-bank residual broad"
+    formula_level: "all_holders_total - fed - foreigners_total - bank_broad_private_depositories_marketable_proxy"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Broad residual inherits measurement error from all upstream blocks."
