@@ -113,6 +113,8 @@ make public-preview PYTHON=python3 PUBLIC_PREVIEW_ARGS="--end-date 2025-12-31"
 The stable public-preview path is nominal-only and does not require FRED keys or the FFIEC 002 browser workflow.
 It is pinned to `configs/model_public_preview.yaml` even though the standalone estimator/calibration defaults now use the broader hybrid benchmark contract in `configs/model_defaults.yaml`.
 
+The fixed reference release for this milestone is [`v0.1.0`](https://github.com/smkwray/wamest/releases/tag/v0.1.0).
+
 ## Canonical public preview
 
 The default public-preview report includes only sectors that can be built through a non-interactive public-data path:
