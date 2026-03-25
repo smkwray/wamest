@@ -4,11 +4,17 @@ from treasury_sector_maturity.reporting import build_output_metadata_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = ROOT / "tests" / "fixtures"
 
 
 def test_output_metadata_report_builds_from_toy_fallback(tmp_path):
     out = tmp_path / "output_metadata_report.md"
-    path = build_output_metadata_report(out=out)
+    path = build_output_metadata_report(
+        sector_file=FIXTURES / "report_sector_effective_maturity.csv",
+        foreign_nowcast_file=FIXTURES / "report_foreign_nowcast_panel.csv",
+        fed_summary_file=FIXTURES / "report_fed_calibration_summary.json",
+        out=out,
+    )
 
     assert path == out
     text = out.read_text(encoding="utf-8")
@@ -29,8 +35,8 @@ def test_output_metadata_report_builds_from_toy_fallback(tmp_path):
 def test_output_metadata_report_handles_missing_fed_summary(tmp_path):
     out = tmp_path / "output_metadata_report_no_summary.md"
     path = build_output_metadata_report(
-        sector_file=ROOT / "data" / "processed" / "toy_sector_effective_maturity.csv",
-        foreign_nowcast_file=ROOT / "data" / "processed" / "toy_foreign_nowcast_panel.csv",
+        sector_file=FIXTURES / "report_sector_effective_maturity.csv",
+        foreign_nowcast_file=FIXTURES / "report_foreign_nowcast_panel.csv",
         fed_summary_file=ROOT / "outputs" / "missing_summary.json",
         out=out,
     )

@@ -1,0 +1,30 @@
+{
+  "status": "ok",
+  "revaluation_fit_rmse": 0.0064,
+  "factor_cols": [
+    "kr_1m",
+    "kr_10y"
+  ],
+  "interval_calibration": {
+    "status": "ok",
+    "n_obs": 13,
+    "abs_error_quantile": 0.9,
+    "fit_rmse_reference": 0.0078,
+    "metrics": {
+      "bill_share": {
+        "n_obs": 13,
+        "half_width": 0.0075,
+        "median_abs_error": 0.0029,
+        "rmse": 0.0043,
+        "max_abs_error": 0.0080
+      },
+      "effective_duration_years": {
+        "n_obs": 13,
+        "half_width": 4.3579,
+        "median_abs_error": 4.0702,
+        "rmse": 4.1305,
+        "max_abs_error": 4.4865
+      }
+    }
+  }
+}

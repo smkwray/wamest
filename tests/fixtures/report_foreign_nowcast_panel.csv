@@ -1,0 +1,4 @@
+date,holder_group,total_treasury_holdings_nowcast,short_term_share_nowcast,long_term_share_nowcast,uncertainty_band_active,uncertainty_support_kind
+2025-06-30,total,8600.0,0.1467,0.8533,True,two_sided_between_supports
+2025-09-30,total,8660.0,0.1430,0.8570,True,two_sided_between_supports
+2025-12-31,total,8721.7,0.1442,0.8558,False,direct_support

@@ -94,7 +94,7 @@ def _build_ffiec002_fixture_zip_bytes() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
-        zf.write(FIXTURES / "ffiec002_908508_20251231.csv", arcname="reports/908508.csv")
+        zf.write(FIXTURES / "FFIEC002_908508_20251231.csv", arcname="reports/908508.csv")
         zf.write(FIXTURES / "ffiec002_1218361_20251231.csv", arcname="reports/1218361.csv")
     return buffer.getvalue()
 
