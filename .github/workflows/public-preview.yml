@@ -1,4 +1,4 @@
-name: Public Preview
+name: Public Preview Reference Build
 
 on:
   workflow_dispatch:
@@ -20,8 +20,6 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    - cron: "0 14 * * 1"
 
 permissions:
   contents: read
@@ -56,7 +54,7 @@ jobs:
 
       - name: Build public preview
         run: |
-          args="--end-date ${PREVIEW_END_DATE} --quarters ${PREVIEW_QUARTERS}"
+          args="--end-date ${PREVIEW_END_DATE} --quarters ${PREVIEW_QUARTERS} --summary-json-out outputs/public_preview/public_release_summary.json"
           if [ "${INCLUDE_OPTIONAL_BANK_PATHS}" = "true" ]; then
             args="${args} --include-optional-bank-paths"
           fi

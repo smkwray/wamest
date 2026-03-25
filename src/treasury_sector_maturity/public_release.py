@@ -68,6 +68,114 @@ DEFAULT_OPTIONAL_BANK_SECTORS = [
     "bank_us_affiliated_areas",
 ]
 
+PUBLIC_PREVIEW_SCHEMA_VERSION = "1.0.0"
+
+REQUIRED_PUBLIC_PREVIEW_COLUMNS = [
+    "date",
+    "sector_key",
+    "bill_share",
+    "short_share_le_1y",
+    "coupon_share",
+    "effective_duration_years",
+    "zero_coupon_equivalent_years",
+    "coupon_only_maturity_years",
+    "method",
+    "window_obs",
+    "level_evidence_tier",
+    "maturity_evidence_tier",
+    "concept_match",
+    "uncertainty_band_method",
+    "uncertainty_calibration_source",
+    "identified_set_source",
+    "bill_share_lower",
+    "bill_share_upper",
+    "short_share_le_1y_lower",
+    "short_share_le_1y_upper",
+]
+
+SECTOR_INTERPRETATION_RULES = {
+    "fed": {
+        "interpretation_class": "observed",
+        "basis": "CUSIP-level SOMA holdings summarized directly against the public benchmark ladder.",
+        "interpretation_boundary": "Closest object in the repo to observed legal maturity.",
+    },
+    "foreigners_total": {
+        "interpretation_class": "survey_anchored",
+        "basis": "Annual SHL survey anchors plus monthly SLT totals and short-vs-long support.",
+        "interpretation_boundary": "Do not read as exact legal WAM between survey anchors.",
+    },
+    "foreigners_official": {
+        "interpretation_class": "survey_anchored",
+        "basis": "Annual SHL survey anchors plus monthly SLT totals and short-vs-long support.",
+        "interpretation_boundary": "Do not read as exact legal WAM between survey anchors.",
+    },
+    "foreigners_private": {
+        "interpretation_class": "survey_anchored",
+        "basis": "Annual SHL survey anchors plus monthly SLT totals and short-vs-long support.",
+        "interpretation_boundary": "Do not read as exact legal WAM between survey anchors.",
+    },
+    "bank_us_chartered": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Observed levels with public bank-constraint support; maturity remains revaluation-based inference.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "credit_unions_marketable_proxy": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Proxy level path with public bank-style short-end support where available.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "bank_foreign_banking_offices_us": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Optional FFIEC 002-backed perimeter with public short-end support where supplied.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "bank_reserve_access_core": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Optional supplement-backed perimeter with explicit short-end support where supplied.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "bank_broad_private_depositories_marketable_proxy": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Optional supplement-backed perimeter with explicit short-end support where supplied.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "bank_us_affiliated_areas": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Optional supplement-backed perimeter with explicit short-end support where supplied.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "nonfinancial_corporates": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Observed level series with maturity inferred from revaluations and benchmark structure.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "state_local_governments": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Observed level series with maturity inferred from revaluations and benchmark structure.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "all_holders_total": {
+        "interpretation_class": "constrained_inference",
+        "basis": "Aggregate holder block with maturity inferred from revaluations and benchmark structure.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "households_nonprofits": {
+        "interpretation_class": "residual_inference",
+        "basis": "Residual-style or weakly observed block with maturity recovered from the inverse problem.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "deposit_user_narrow_proxy": {
+        "interpretation_class": "residual_inference",
+        "basis": "Proxy or residual-style block assembled from component sectors.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+    "domestic_nonbank_residual_broad": {
+        "interpretation_class": "residual_inference",
+        "basis": "Residual closure sector with maturity recovered from the inverse problem.",
+        "interpretation_boundary": "Do not read as exact legal WAM.",
+    },
+}
+
 
 @dataclass(frozen=True)
 class PublicReleaseArtifacts:
@@ -210,9 +318,17 @@ def build_public_release_report(
         end_date=resolved_end_date,
         quarters=quarters,
     )
+    validation = _build_validation_summary(
+        filtered,
+        selected_sectors=selected_sectors,
+        include_optional_bank_paths=include_optional_bank_paths,
+        resolved_end_date=resolved_end_date,
+    )
+    _raise_on_failed_validations(validation)
     write_table(filtered, sector_output_path)
 
     manifest = {
+        "schema_version": PUBLIC_PREVIEW_SCHEMA_VERSION,
         "run_timestamp_utc": run_started.isoformat(),
         "command": command or _current_command(),
         "source_provider_requested": source_provider,
@@ -223,6 +339,7 @@ def build_public_release_report(
             "factor_benchmark_families": [],
         },
         "end_date": resolved_end_date.date().isoformat(),
+        "resolved_common_quarter_date": resolved_end_date.date().isoformat(),
         "quarter_count": int(filtered["date"].nunique()),
         "sector_keys_included": selected_sectors,
         "optional_bank_paths_included": bool(include_optional_bank_paths),
@@ -250,6 +367,7 @@ def build_public_release_report(
         fed_summary=fed_summary,
         include_optional_bank_paths=include_optional_bank_paths,
         summary_json_path=summary_json_path,
+        validation=validation,
     )
     if summary_json_path is not None:
         dump_json(structured_summary, summary_json_path)
@@ -265,6 +383,7 @@ def build_public_release_report(
         fed_summary=fed_summary,
         include_optional_bank_paths=include_optional_bank_paths,
         summary_json_path=summary_json_path,
+        validation=validation,
     )
     ensure_parent(report_path).write_text(markdown, encoding="utf-8")
 
@@ -288,10 +407,14 @@ def build_public_release_summary(
     fed_summary: dict[str, Any],
     include_optional_bank_paths: bool,
     summary_json_path: str | Path | None,
+    validation: dict[str, Any],
 ) -> dict[str, Any]:
     sector_frame = sector.copy()
     sector_frame["date"] = pd.to_datetime(sector_frame["date"], errors="coerce")
+    provenance = _build_provenance_summary(manifest)
+    interpretations = _build_sector_interpretation_summary(sector_frame)
     return {
+        "schema_version": PUBLIC_PREVIEW_SCHEMA_VERSION,
         "release_summary": {
             "report_end_date": report_date.date().isoformat(),
             "quarter_count": int(manifest["quarter_count"]),
@@ -301,10 +424,14 @@ def build_public_release_summary(
             "benchmark_contract": dict(manifest.get("benchmark_contract") or {}),
             "optional_bank_paths_included": bool(include_optional_bank_paths),
             "command": manifest.get("command"),
+            "resolved_common_quarter_date": manifest.get("resolved_common_quarter_date"),
         },
         "sector_coverage": _build_sector_coverage_summary(sector_frame),
+        "sector_interpretation": interpretations,
         "evidence_tiers": _build_evidence_summary(sector_frame),
         "uncertainty_identified_sets": _build_uncertainty_summary(sector_frame),
+        "validation": validation,
+        "provenance": provenance,
         "bank_sector_caveats": [
             "Default public preview includes only non-interactive bank paths: bank_us_chartered plus credit_unions_marketable_proxy.",
             "Optional bank perimeters remain excluded from the stable default path because they depend on FFIEC 002 and/or supplement-backed inputs.",
@@ -338,12 +465,16 @@ def render_public_release_report(
     fed_summary: dict[str, Any],
     include_optional_bank_paths: bool,
     summary_json_path: str | Path | None,
+    validation: dict[str, Any],
 ) -> str:
     sector_frame = sector.copy()
     sector_frame["date"] = pd.to_datetime(sector_frame["date"], errors="coerce")
     coverage_rows = _build_sector_coverage_rows(sector_frame)
+    interpretation_rows = _build_sector_interpretation_rows(sector_frame)
     evidence_rows = _build_evidence_rows(sector_frame)
     uncertainty_rows = _build_uncertainty_rows(sector_frame)
+    validation_rows = _build_validation_rows(validation)
+    provenance_rows = _build_provenance_rows(manifest)
 
     lines = [
         "# Public Release Preview Report",
@@ -356,6 +487,7 @@ def render_public_release_report(
         ),
         "",
         f"- Report end date: `{report_date.date().isoformat()}`",
+        f"- Schema version: `{PUBLIC_PREVIEW_SCHEMA_VERSION}`",
         f"- Quarters included: `{manifest['quarter_count']}`",
         f"- Requested provider: `{manifest['source_provider_requested']}`",
         f"- Public model config: `{manifest['model_config_path']}`",
@@ -371,6 +503,10 @@ def render_public_release_report(
         "## Sector Coverage",
         "",
         _render_markdown_table(coverage_rows),
+        "",
+        "## Sector Interpretation",
+        "",
+        _render_markdown_table(interpretation_rows),
         "",
         "## Evidence Tiers",
         "",
@@ -435,7 +571,19 @@ def render_public_release_report(
         "",
         "## Release Notes",
         "",
-        "See `docs/release_notes.md` and `docs/release_limitations.md` for the public boundary and non-goals.",
+        "See `docs/release_notes.md`, `docs/release_limitations.md`, and `docs/output_schema.md` for the public boundary and contract.",
+        "",
+        "## Validation",
+        "",
+        f"Overall validation status: `{validation['overall_status']}`",
+        "",
+        _render_markdown_table(validation_rows),
+        "",
+        "## Provenance",
+        "",
+        f"Resolved common quarter date: `{manifest.get('resolved_common_quarter_date')}`",
+        "",
+        _render_markdown_table(provenance_rows),
     ]
 
     if not foreign_nowcast.empty:
@@ -936,6 +1084,291 @@ def _build_fed_calibration_snapshot(fed_summary: dict[str, Any]) -> dict[str, An
         "interval_calibration_rows": interval.get("n_obs"),
         "interval_quantile": interval.get("abs_error_quantile"),
     }
+
+
+def _build_validation_summary(
+    frame: pd.DataFrame,
+    *,
+    selected_sectors: list[str],
+    include_optional_bank_paths: bool,
+    resolved_end_date: pd.Timestamp,
+) -> dict[str, Any]:
+    present = set(frame.get("sector_key", pd.Series(dtype="object")).dropna().astype(str))
+    missing_required = [sector for sector in DEFAULT_PUBLIC_PREVIEW_SECTORS if sector not in present]
+    missing_columns = [column for column in REQUIRED_PUBLIC_PREVIEW_COLUMNS if column not in frame.columns]
+    optional_present = sorted(present & set(DEFAULT_OPTIONAL_BANK_SECTORS))
+
+    checks = [
+        {
+            "check": "required_public_preview_sectors_present",
+            "status": "pass" if not missing_required else "fail",
+            "hard_failure": True,
+            "details": (
+                "All required default public-preview sectors are present."
+                if not missing_required
+                else "Missing sectors: " + ", ".join(missing_required)
+            ),
+        },
+        {
+            "check": "required_public_columns_present",
+            "status": "pass" if not missing_columns else "fail",
+            "hard_failure": True,
+            "details": (
+                "All required schema columns are present."
+                if not missing_columns
+                else "Missing columns: " + ", ".join(missing_columns)
+            ),
+        },
+        {
+            "check": "resolved_common_quarter_present_for_all_selected_sectors",
+            "status": (
+                "pass"
+                if _sectors_present_at_date(frame, selected_sectors, resolved_end_date)
+                else "fail"
+            ),
+            "hard_failure": True,
+            "details": (
+                f"All selected sectors contain rows at {resolved_end_date.date().isoformat()}."
+                if _sectors_present_at_date(frame, selected_sectors, resolved_end_date)
+                else f"At least one selected sector is missing the resolved common quarter {resolved_end_date.date().isoformat()}."
+            ),
+        },
+        {
+            "check": "optional_bank_sector_policy",
+            "status": (
+                "pass"
+                if include_optional_bank_paths or not optional_present
+                else "fail"
+            ),
+            "hard_failure": True,
+            "details": (
+                "Optional bank sectors are absent from the stable default output."
+                if (include_optional_bank_paths or not optional_present)
+                else "Optional sectors unexpectedly present: " + ", ".join(optional_present)
+            ),
+        },
+        {
+            "check": "published_interval_bounds_are_ordered",
+            "status": "pass" if _bounds_are_valid(frame) else "fail",
+            "hard_failure": True,
+            "details": (
+                "Published lower/upper interval columns are ordered and contain their points when all values are present."
+                if _bounds_are_valid(frame)
+                else "At least one published lower/upper interval pair is invalid or excludes its point estimate."
+            ),
+        },
+    ]
+    return {
+        "overall_status": "pass" if all(check["status"] == "pass" for check in checks) else "fail",
+        "checks": checks,
+    }
+
+
+def _raise_on_failed_validations(validation: dict[str, Any]) -> None:
+    failed = [
+        check
+        for check in validation.get("checks", [])
+        if check.get("hard_failure") and check.get("status") != "pass"
+    ]
+    if not failed:
+        return
+    details = "; ".join(f"{check['check']}: {check['details']}" for check in failed)
+    raise ValueError(f"Public preview validation failed: {details}")
+
+
+def _build_validation_rows(validation: dict[str, Any]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for check in validation.get("checks", []):
+        rows.append(
+            {
+                "check": str(check.get("check")),
+                "status": str(check.get("status")),
+                "hard_failure": str(bool(check.get("hard_failure"))),
+                "details": str(check.get("details", "")),
+            }
+        )
+    return rows or [{"check": "n/a", "status": "n/a", "hard_failure": "False", "details": "No validation rows."}]
+
+
+def _build_provenance_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "resolved_common_quarter_date": manifest.get("resolved_common_quarter_date"),
+        "sources": _build_provenance_rows(manifest),
+    }
+
+
+def _build_provenance_rows(manifest: dict[str, Any]) -> list[dict[str, str | None]]:
+    rows: list[dict[str, str | None]] = []
+    source_artifacts = dict(manifest.get("source_artifact_paths") or {})
+    providers = dict(manifest.get("source_provider_used") or {})
+    for source_key in sorted(source_artifacts):
+        artifact = dict(source_artifacts[source_key] or {})
+        access_mode, reference = _artifact_access_mode_and_reference(artifact)
+        date_start, date_end, vintage = _artifact_temporal_metadata(artifact)
+        rows.append(
+            {
+                "source_key": source_key,
+                "provider": str(providers.get(source_key) or "n/a"),
+                "access_mode": access_mode,
+                "reference": reference,
+                "date_span": _format_nullable_date_span(date_start, date_end),
+                "vintage": vintage,
+            }
+        )
+    return rows or [
+        {
+            "source_key": "n/a",
+            "provider": "n/a",
+            "access_mode": "n/a",
+            "reference": "n/a",
+            "date_span": "n/a",
+            "vintage": "n/a",
+        }
+    ]
+
+
+def _artifact_access_mode_and_reference(artifact: dict[str, Any]) -> tuple[str, str]:
+    if artifact.get("provided_path"):
+        return "provided", str(artifact["provided_path"])
+    if artifact.get("normalized_path"):
+        return "fetched", str(artifact["normalized_path"])
+    if artifact.get("url"):
+        return "official_url", str(artifact["url"])
+    if artifact.get("derived_from"):
+        derived_from = ", ".join(str(value) for value in artifact["derived_from"])
+        return "derived", derived_from
+    if artifact.get("raw_path"):
+        return "fetched_raw", str(artifact["raw_path"])
+    return "unknown", "n/a"
+
+
+def _artifact_temporal_metadata(artifact: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    path_str = artifact.get("normalized_path") or artifact.get("provided_path")
+    if not path_str:
+        return None, None, None
+    path = Path(path_str)
+    if not path.exists() or path.suffix.lower() not in {".csv", ".txt", ".xlsx", ".xls", ".parquet"}:
+        return None, None, None
+    try:
+        frame = read_table(path)
+    except Exception:
+        return None, None, None
+
+    date_start, date_end = _detect_frame_date_span(frame)
+    vintage = _detect_frame_vintage(frame)
+    return date_start, date_end, vintage
+
+
+def _detect_frame_date_span(frame: pd.DataFrame) -> tuple[str | None, str | None]:
+    for candidate in [
+        "date",
+        "report_date",
+        "as_of_date",
+        "observation_date",
+        "quarter_end",
+        "quarter_end_date",
+        "quarter",
+    ]:
+        if candidate not in frame.columns:
+            continue
+        series = pd.to_datetime(frame[candidate], errors="coerce").dropna().sort_values()
+        if not series.empty:
+            return series.iloc[0].date().isoformat(), series.iloc[-1].date().isoformat()
+    return None, None
+
+
+def _detect_frame_vintage(frame: pd.DataFrame) -> str | None:
+    if "vintage" not in frame.columns:
+        return None
+    values = sorted({str(value) for value in frame["vintage"].dropna().astype(str) if str(value)})
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    return f"{values[0]} -> {values[-1]}"
+
+
+def _build_sector_interpretation_summary(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for sector_key in DEFAULT_PUBLIC_PREVIEW_SECTORS + DEFAULT_OPTIONAL_BANK_SECTORS:
+        rule = dict(
+            SECTOR_INTERPRETATION_RULES.get(
+                sector_key,
+                {
+                    "interpretation_class": "constrained_inference",
+                    "basis": "Sector maturity is inferred from the public benchmark/revaluation stack.",
+                    "interpretation_boundary": "Do not read as exact legal WAM.",
+                },
+            )
+        )
+        included = sector_key in set(frame.get("sector_key", pd.Series(dtype="object")).dropna().astype(str))
+        rows.append(
+            {
+                "sector_key": sector_key,
+                "included": included,
+                "interpretation_class": rule["interpretation_class"],
+                "basis": rule["basis"],
+                "interpretation_boundary": rule["interpretation_boundary"],
+            }
+        )
+    return rows
+
+
+def _build_sector_interpretation_rows(frame: pd.DataFrame) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for row in _build_sector_interpretation_summary(frame):
+        rows.append(
+            {
+                "sector_key": str(row["sector_key"]),
+                "included": str(bool(row["included"])),
+                "class": str(row["interpretation_class"]),
+                "basis": str(row["basis"]),
+                "boundary": str(row["interpretation_boundary"]),
+            }
+        )
+    return rows
+
+
+def _sectors_present_at_date(frame: pd.DataFrame, sectors: list[str], date: pd.Timestamp) -> bool:
+    if frame.empty:
+        return False
+    normalized_date = pd.Timestamp(date).normalize()
+    rows = frame.copy()
+    rows["date"] = pd.to_datetime(rows["date"], errors="coerce").dt.normalize()
+    present = set(rows.loc[rows["date"] == normalized_date, "sector_key"].dropna().astype(str))
+    return set(sectors).issubset(present)
+
+
+def _bounds_are_valid(frame: pd.DataFrame) -> bool:
+    bound_sets = [
+        ("bill_share", "bill_share_lower", "bill_share_upper"),
+        ("short_share_le_1y", "short_share_le_1y_lower", "short_share_le_1y_upper"),
+        ("effective_duration_years", "effective_duration_years_lower", "effective_duration_years_upper"),
+        (
+            "zero_coupon_equivalent_years",
+            "zero_coupon_equivalent_years_lower",
+            "zero_coupon_equivalent_years_upper",
+        ),
+    ]
+    for point_col, lower_col, upper_col in bound_sets:
+        if not {point_col, lower_col, upper_col}.issubset(frame.columns):
+            continue
+        subset = frame[[point_col, lower_col, upper_col]].apply(pd.to_numeric, errors="coerce").dropna()
+        if subset.empty:
+            continue
+        if ((subset[lower_col] > subset[upper_col]) | (subset[point_col] < subset[lower_col]) | (subset[point_col] > subset[upper_col])).any():
+            return False
+    return True
+
+
+def _format_nullable_date_span(start: str | None, end: str | None) -> str:
+    if start and end:
+        return f"{start} -> {end}"
+    if start:
+        return start
+    if end:
+        return end
+    return "n/a"
 
 
 def _render_markdown_table(rows: list[dict[str, str]]) -> str:

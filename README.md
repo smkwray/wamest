@@ -21,7 +21,7 @@ Advanced workflows are supported, but they are **optional** and more fragile:
 - key-rate factor buckets
 - FFIEC 002 and supplemental bank-perimeter inputs
 
-See [docs/release_limitations.md](docs/release_limitations.md) for the release boundary and caveats, and [docs/release_notes.md](docs/release_notes.md) for the Wave 1 public-preview summary.
+See [docs/release_limitations.md](docs/release_limitations.md) for the release boundary and caveats, [docs/release_notes.md](docs/release_notes.md) for the Wave 1 public-preview summary, and [docs/output_schema.md](docs/output_schema.md) for the versioned output contract.
 
 ## Project goal
 
@@ -138,6 +138,36 @@ The default public-preview report excludes these optional sectors:
 - `bank_us_affiliated_areas`
 
 Those optional sectors remain supported through explicit FFIEC 002 and/or supplement-backed workflows, but they are not part of the first public-release acceptance bar.
+
+## V1 acceptance contract
+
+The first public-preview milestone is treated as a **fixed reference build**, not a rolling latest-data promise.
+
+The V1 acceptance bundle is:
+
+```bash
+make test PYTHON=python3
+make toy PYTHON=python3
+make release-check PYTHON=python3
+make public-preview-contract PYTHON=python3
+```
+
+That acceptance bundle must produce:
+
+- `outputs/public_preview/public_release_report.md`
+- `outputs/public_preview/sector_effective_maturity.csv`
+- `outputs/public_preview/run_manifest.json`
+- `outputs/public_preview/public_release_summary.json`
+
+The acceptance build is pinned to:
+
+- schema version `1.0.0`
+- quarter end `2025-12-31`
+- `configs/model_public_preview.yaml`
+- the canonical default sector set listed above
+- exclusion of `bank_foreign_banking_offices_us`, `bank_reserve_access_core`, `bank_broad_private_depositories_marketable_proxy`, and `bank_us_affiliated_areas`
+
+The acceptance build fails if any required artifact is missing, any required default sector is missing, the schema-required columns or JSON fields are missing, or optional bank sectors appear in the stable default output.
 
 ## Advanced workflow outline
 
@@ -294,7 +324,7 @@ The Z.1 FRED path is allowlist-based, not a generic code transformation. Keep us
 
 ## Repo map
 
-- `docs/` - methodology, source notes, release limitations, and release notes
+- `docs/` - methodology, source notes, release limitations, release notes, and the output schema contract
 - `configs/` - sector definitions, source manifest, model defaults
 - `src/treasury_sector_maturity/` - reusable code
 - `scripts/` - pipeline entrypoints
@@ -308,3 +338,4 @@ The Z.1 FRED path is allowlist-based, not a generic code transformation. Keep us
 - The default public path is nominal-only and pinned to `configs/model_public_preview.yaml`; the standalone estimator/calibration defaults in `configs/model_defaults.yaml` now use the broader hybrid research contract, while FFIEC 002 workflows remain optional and experimental relative to the public baseline.
 - `docs/release_limitations.md` describes what is intentionally outside the first public preview boundary.
 - `docs/release_notes.md` summarizes what is included, excluded, and experimental in Wave 1.
+- `docs/output_schema.md` defines the versioned public artifact contract.

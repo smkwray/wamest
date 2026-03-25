@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_PUBLIC_DOCS = {
+    "docs/output_schema.md",
     "docs/release_limitations.md",
     "docs/release_notes.md",
     "docs/revaluation_methodology.md",
