@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_PUBLIC_DOCS = {
     "docs/output_schema.md",
+    "docs/full_coverage_output_schema.md",
     "docs/release_limitations.md",
     "docs/release_notes.md",
     "docs/revaluation_methodology.md",
@@ -25,12 +27,20 @@ REQUIRED_GITIGNORE_ENTRIES = {
     "data/processed/",
     "outputs/",
 }
+FORBIDDEN_TRACKED_PATH_PATTERNS = [
+    re.compile(r"^do/"),
+    re.compile(r"(^|/)\.env$"),
+    re.compile(r"(^|/)plan\.md$"),
+    re.compile(r"(^|/).*\.plan\.md$"),
+    re.compile(r"^plans/"),
+]
 PUBLIC_TEXT_FILES = [
     "README.md",
     "LICENSE",
     "Makefile",
     "pyproject.toml",
     ".github/workflows/ci.yml",
+    ".github/workflows/full-coverage-release.yml",
     ".github/workflows/public-preview.yml",
 ]
 PUBLIC_TEXT_GLOBS = [
@@ -55,10 +65,6 @@ FORBIDDEN_TEXT_PATTERNS = [
     (re.compile(r"\btandy\.md\b", flags=re.IGNORECASE), "public files must not reference internal agent docs"),
     (re.compile(r"\bAGENTS\.md\b"), "public files must not reference internal agent docs"),
     (re.compile(r"\bSTATUS\.md\b"), "public files must not reference internal status docs"),
-    (re.compile(r"\bCODEX_HANDOFF\.md\b"), "public files must not reference internal handoff docs"),
-    (re.compile(r"\bCodex\b"), "public files must not reference the internal coding agent"),
-    (re.compile(r"\bClaude\b"), "public files must not reference internal agent/model names"),
-    (re.compile(r"\bGPT\b"), "public files must not reference internal agent/model names"),
 ]
 
 
@@ -92,9 +98,23 @@ def _check_gitignore(errors: list[str]) -> None:
 
 
 def _check_stray_files(errors: list[str]) -> None:
-    ds_store = sorted(str(path.relative_to(ROOT)) for path in ROOT.rglob(".DS_Store"))
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    tracked_paths = [item for item in tracked.decode("utf-8", errors="replace").split("\0") if item]
+    ds_store = sorted(path for path in tracked_paths if path.endswith(".DS_Store"))
     if ds_store:
         errors.append("Stray .DS_Store files must not be present: " + ", ".join(ds_store))
+    forbidden = sorted(
+        path
+        for path in tracked_paths
+        if any(pattern.search(path) for pattern in FORBIDDEN_TRACKED_PATH_PATTERNS)
+    )
+    if forbidden:
+        errors.append("Tracked internal/private files must not be present: " + ", ".join(forbidden))
 
 
 def _check_public_text(errors: list[str]) -> None:

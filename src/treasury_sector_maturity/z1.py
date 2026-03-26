@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .coverage import DEFAULT_COVERAGE_REGISTRY_PATH, attach_coverage_metadata
 from .utils import load_yaml
 
 FLOW_PREFIXES = {
@@ -372,7 +373,11 @@ def compute_identity_errors(panel: pd.DataFrame) -> pd.DataFrame:
     return panel
 
 
-def build_sector_panel(series_panel: pd.DataFrame, sector_config_path: str | Path) -> pd.DataFrame:
+def build_sector_panel(
+    series_panel: pd.DataFrame,
+    sector_config_path: str | Path,
+    coverage_registry_path: str | Path = DEFAULT_COVERAGE_REGISTRY_PATH,
+) -> pd.DataFrame:
     config = load_yaml(sector_config_path)
     sector_defs = config.get("sectors") or {}
 
@@ -439,4 +444,4 @@ def build_sector_panel(series_panel: pd.DataFrame, sector_config_path: str | Pat
     out = pd.concat(rows, ignore_index=True)
     out["date"] = pd.to_datetime(out["date"])
     out = out.sort_values(["sector_key", "date"]).reset_index(drop=True)
-    return out
+    return attach_coverage_metadata(out, path=coverage_registry_path)

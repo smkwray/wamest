@@ -16,6 +16,7 @@ from treasury_sector_maturity.benchmark_sets import (
     normalized_family_list,
     parse_curve_file_overrides,
 )
+from treasury_sector_maturity.coverage import resolve_fed_calibration_scope
 from treasury_sector_maturity.calibration import (
     build_fed_interval_calibration,
     calibrate_fed_revaluation_mapping,
@@ -30,7 +31,7 @@ from treasury_sector_maturity.utils import dump_json, load_yaml, read_table, wri
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Calibrate Fed Z.1 revaluation mapping against exact SOMA metrics.")
-    parser.add_argument("--z1-panel", required=True)
+    parser.add_argument("--z1-panel", default=None)
     parser.add_argument("--soma-file")
     parser.add_argument("--h15-file")
     parser.add_argument(
@@ -52,6 +53,7 @@ def main() -> None:
         help="Optional repeated factor benchmark family key such as key_rate_buckets_from_nominal.",
     )
     parser.add_argument("--source-provider", default="auto", choices=["auto", "fed", "fred"])
+    parser.add_argument("--coverage-scope", default="default", choices=["default", "full"])
     parser.add_argument("--fed-sector", default="fed")
     parser.add_argument("--series-config", default="configs/h15_series.yaml")
     parser.add_argument("--model-config", default="configs/model_defaults.yaml")
@@ -63,12 +65,18 @@ def main() -> None:
         default=40,
         help="If auto-fetching SOMA, keep at most this many most-recent quarter dates after other filters.",
     )
-    parser.add_argument("--exact-out", default="data/processed/fed_exact_metrics.csv")
-    parser.add_argument("--interval-calibration-out", default="data/processed/fed_interval_calibration.csv")
-    parser.add_argument("--summary-out", default="outputs/fed_calibration_summary.json")
+    parser.add_argument("--exact-out", default=None)
+    parser.add_argument("--interval-calibration-out", default=None)
+    parser.add_argument("--summary-out", default=None)
     args = parser.parse_args()
 
-    z1_panel = read_table(args.z1_panel)
+    scope_cfg = resolve_fed_calibration_scope(args.coverage_scope)
+    z1_panel_path = args.z1_panel or scope_cfg["z1_panel"]
+    exact_out = args.exact_out or scope_cfg["exact_out"]
+    interval_calibration_out = args.interval_calibration_out or scope_cfg["interval_calibration_out"]
+    summary_out = args.summary_out or scope_cfg["summary_out"]
+
+    z1_panel = read_table(z1_panel_path)
     fed_panel = z1_panel[z1_panel["sector_key"] == args.fed_sector].copy()
     fed_panel = attach_revaluation_returns(fed_panel, group_col="sector_key")
 
@@ -110,7 +118,7 @@ def main() -> None:
     )
     soma = read_soma_holdings(soma_file)
     exact_metrics = summarize_soma_quarterly(soma, curve_df=curves)
-    write_table(exact_metrics, args.exact_out)
+    write_table(exact_metrics, exact_out)
 
     model_cfg = load_yaml(args.model_config)
     est_cfg = model_cfg.get("estimation", {})
@@ -156,13 +164,13 @@ def main() -> None:
         factor_returns=factor_benchmark,
         settings=settings,
     )
-    write_table(interval_calibration, args.interval_calibration_out)
+    write_table(interval_calibration, interval_calibration_out)
     summary["interval_calibration"] = summarize_interval_calibration(interval_calibration, settings=interval_cfg)
-    dump_json(summary, args.summary_out)
+    dump_json(summary, summary_out)
 
-    print(f"Wrote {args.exact_out}")
-    print(f"Wrote {args.interval_calibration_out}")
-    print(f"Wrote {args.summary_out}")
+    print(f"Wrote {exact_out}")
+    print(f"Wrote {interval_calibration_out}")
+    print(f"Wrote {summary_out}")
 
 
 if __name__ == "__main__":

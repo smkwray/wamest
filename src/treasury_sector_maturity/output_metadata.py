@@ -30,6 +30,23 @@ def annotate_estimated_output(
     support_panel["date"] = pd.to_datetime(support_panel.get("date"), errors="coerce")
     panel = support_panel.copy()
     merge_cols = [col for col in ["date", "sector_key", "label", "method_priority", "warnings", "bill_share_observed"] if col in panel.columns]
+    merge_cols.extend(
+        [
+            col
+            for col in [
+                "node_type",
+                "sector_family",
+                "parent_key",
+                "is_canonical",
+                "required_for_full_coverage",
+                "included_in_public_preview_default",
+                "included_in_optional_bank_paths",
+                "concept_risk",
+                "history_start_reason",
+            ]
+            if col in panel.columns and col not in merge_cols
+        ]
+    )
     if {"date", "sector_key"}.issubset(merge_cols):
         panel = panel[merge_cols].drop_duplicates(["date", "sector_key"])
         out = out.merge(panel, on=["date", "sector_key"], how="left")
@@ -339,6 +356,8 @@ def _apply_annotation_and_bands(
         axis=1,
     )
     out = pd.concat([df, annotation_rows], axis=1)
+    estimand_rows = out.apply(lambda row: pd.Series(_estimand_fields(row)), axis=1)
+    out = pd.concat([out, estimand_rows], axis=1)
     out["observed_bill_share_available"] = out.get("bill_share_observed").notna()
     out["quality_tier"] = out["maturity_evidence_tier"]
 
@@ -417,6 +436,64 @@ def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
         "concept_match": concept_match_map[sector_class],
         "coverage_ratio": coverage_ratio_map[sector_class],
     }
+
+
+def _estimand_fields(row: pd.Series) -> dict[str, Any]:
+    sector_key = str(row.get("sector_key") or "")
+    primary = _primary_method(row.get("method_priority"))
+    sector_class = _sector_class(sector_key)
+    concept_match = str(row.get("concept_match") or "")
+    maturity_tier = str(row.get("maturity_evidence_tier") or "")
+
+    estimator_family_map = {
+        "exact_soma_overlay": "soma_security_level_overlay",
+        "shl_slt_anchor": "tic_shl_slt_anchor",
+        "computed_from_total_minus_official": "identity_split_plus_anchor",
+        "direct_z1": "direct_level_plus_revaluation_inference",
+        "direct_z1_residual_style": "residual_level_plus_revaluation_inference",
+        "revaluation_inference": "rolling_benchmark_weights",
+        "revaluation_inference_weak": "rolling_benchmark_weights_weak",
+        "computed_identity": "identity_closure_plus_inherited_estimator",
+        "computed_series_proxy": "proxy_level_plus_revaluation_inference",
+    }
+    estimand_class_map = {
+        "fed": "exact_security_level_wam",
+        "foreign": "survey_anchored_maturity_mix",
+        "bank": "constraint_anchored_maturity_mix",
+        "bank_proxy": "constraint_anchored_maturity_mix",
+        "residual": "closure_based_residual_estimate",
+        "narrow_proxy": "constraint_anchored_maturity_mix",
+        "aggregate": "constraint_anchored_maturity_mix",
+        "domestic_direct": "duration_equivalent_inferred",
+    }
+
+    high_confidence_flag = (
+        maturity_tier in {"A", "B"}
+        and concept_match in {"direct", "anchor_consistent"}
+        and sector_class in {"fed", "foreign"}
+    )
+
+    return {
+        "estimand_class": estimand_class_map[sector_class],
+        "estimator_family": estimator_family_map.get(primary, "rolling_benchmark_weights"),
+        "selection_reason": _selection_reason(primary),
+        "high_confidence_flag": bool(high_confidence_flag),
+    }
+
+
+def _selection_reason(primary: str) -> str:
+    reason_map = {
+        "exact_soma_overlay": "highest-confidence direct public holdings source available",
+        "shl_slt_anchor": "survey anchor selected over weaker revaluation-only inference",
+        "computed_from_total_minus_official": "derived split selected from stronger total and official anchors",
+        "direct_z1": "direct public level retained with maturity inferred from benchmark returns",
+        "direct_z1_residual_style": "residual-style public level retained with explicit interpretation limits",
+        "revaluation_inference": "best available public maturity signal is sector revaluation behavior",
+        "revaluation_inference_weak": "weak revaluation signal retained because coverage is mandatory",
+        "computed_identity": "identity-based level selected because no direct public level exists for this node",
+        "computed_series_proxy": "proxy series retained because no cleaner public Treasury concept is available",
+    }
+    return reason_map.get(primary, "best available estimator selected under current public data limits")
 
 
 def _heuristic_band_fields(row: pd.Series) -> pd.Series:

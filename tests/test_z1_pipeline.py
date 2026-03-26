@@ -42,3 +42,24 @@ def test_build_sector_panel_from_toy():
     resid = sector_panel[sector_panel["sector_key"] == "domestic_nonbank_residual_broad"]
     assert not resid.empty
     assert resid["level"].notna().all()
+
+
+def test_build_full_coverage_sector_panel_from_toy_scaffold():
+    long_df = parse_z1_ddp_csv(ROOT / "data" / "examples" / "toy_z1_selected_series.csv")
+    catalog = load_series_catalog(ROOT / "configs" / "z1_series_catalog_full.yaml")
+    series_panel = materialize_series_panel(long_df, catalog)
+    series_panel = compute_identity_errors(series_panel)
+
+    sector_panel = build_sector_panel(series_panel, ROOT / "configs" / "sector_definitions_full.yaml")
+
+    assert "money_market_funds" in set(sector_panel["sector_key"])
+    assert "life_insurers" in set(sector_panel["sector_key"])
+    assert "security_brokers_and_dealers" in set(sector_panel["sector_key"])
+    assert "discrepancy" in set(sector_panel["sector_key"])
+
+    mmf = sector_panel[sector_panel["sector_key"] == "money_market_funds"].iloc[0]
+    discrepancy = sector_panel[sector_panel["sector_key"] == "discrepancy"].iloc[0]
+
+    assert mmf["required_for_full_coverage"]
+    assert mmf["node_type"] == "atomic"
+    assert discrepancy["node_type"] == "rollup"

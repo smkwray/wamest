@@ -64,3 +64,25 @@ jobs:
           make toy
           make release-check
           make public-preview-contract
+
+  full-coverage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Run full coverage contract bundle
+        run: make full-coverage-contract

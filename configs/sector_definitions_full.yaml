@@ -1,0 +1,206 @@
+sectors:
+  all_holders_total:
+    label: "All sector holdings total"
+    level_series: "all_sectors_treasuries_asset"
+    method_priority: ["direct_z1"]
+
+  fed:
+    label: "Monetary authority / Fed"
+    level_series: "monetary_authority_total_treasuries"
+    bills_series: "monetary_authority_bills"
+    method_priority: ["direct_z1", "exact_soma_overlay"]
+
+  foreigners_total:
+    label: "Foreigners total"
+    level_series: "rest_of_world_total_treasuries"
+    bills_series: "rest_of_world_bills_and_certificates"
+    method_priority: ["direct_z1", "shl_slt_anchor"]
+
+  foreigners_official:
+    label: "Foreign official"
+    level_series: "rest_of_world_official_total_treasuries"
+    bills_series: "rest_of_world_official_bills_and_certificates"
+    method_priority: ["direct_z1", "shl_slt_anchor"]
+
+  foreigners_private:
+    label: "Foreign private"
+    level_series: "rest_of_world_private_total_treasuries"
+    bills_series: "rest_of_world_private_bills_and_certificates"
+    method_priority: ["computed_from_total_minus_official", "shl_slt_anchor"]
+
+  bank_us_chartered:
+    label: "U.S.-chartered depositories"
+    level_series: "us_chartered_depositories_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference"]
+
+  bank_foreign_banking_offices_us:
+    label: "Foreign banking offices in the U.S."
+    level_series: "foreign_banking_offices_us_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  bank_us_affiliated_areas:
+    label: "Banks in U.S.-affiliated areas"
+    level_series: "banks_us_affiliated_areas_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  credit_unions_marketable_proxy:
+    label: "Credit unions marketable Treasury proxy"
+    level_series: "credit_unions_marketable_treasury_proxy"
+    method_priority: ["computed_series_proxy", "revaluation_inference_weak"]
+
+  bank_reserve_access_core:
+    label: "Banks reserve-access core"
+    formula_level: "bank_us_chartered + bank_foreign_banking_offices_us"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Definition excludes banks in U.S.-affiliated areas and credit unions."
+
+  bank_broad_private_depositories_marketable_proxy:
+    label: "Banks broad private-depositories marketable proxy"
+    formula_level: "bank_us_chartered + bank_foreign_banking_offices_us + bank_us_affiliated_areas + credit_unions_marketable_proxy"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Proxy excludes nonmarketable or mixed-instrument contamination only to the extent upstream series do."
+
+  households_nonprofits:
+    label: "Households and nonprofits"
+    level_series: "households_nonprofits_treasuries_residual"
+    method_priority: ["direct_z1_residual_style"]
+    warnings:
+      - "Household/nonprofit Treasury holdings are not a clean retail concept."
+
+  nonfinancial_corporates:
+    label: "Nonfinancial corporate business"
+    level_series: "nonfinancial_corporate_treasuries"
+    method_priority: ["direct_z1"]
+
+  nonfinancial_noncorporate_business:
+    label: "Nonfinancial noncorporate business"
+    level_series: "nonfinancial_noncorporate_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+    warnings:
+      - "Flow-of-funds concept may be broader than clean Treasury-only exposure in some contexts."
+
+  state_local_governments:
+    label: "State and local governments"
+    level_series: "state_local_governments_treasuries_ex_slgs"
+    method_priority: ["direct_z1"]
+
+  property_casualty_insurers:
+    label: "Property-casualty insurers"
+    level_series: "property_casualty_insurers_treasuries"
+    bills_series: "property_casualty_insurers_bills"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  life_insurers:
+    label: "Life insurers"
+    level_series: "life_insurers_treasuries"
+    bills_series: "life_insurers_bills"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  private_pension_total:
+    label: "Private pension total"
+    level_series: "private_pension_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  private_defined_benefit_pensions:
+    label: "Private defined benefit pensions"
+    level_series: "private_defined_benefit_pension_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  private_defined_contribution_pensions:
+    label: "Private defined contribution pensions"
+    level_series: "private_defined_contribution_pension_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  federal_pension_total:
+    label: "Federal pension total"
+    level_series: "federal_pension_total_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  federal_defined_benefit_pensions:
+    label: "Federal defined benefit pensions"
+    level_series: "federal_defined_benefit_pension_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  federal_defined_contribution_pensions:
+    label: "Federal defined contribution pensions"
+    level_series: "federal_defined_contribution_pension_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  state_local_employee_defined_benefit_pensions:
+    label: "State and local government employee defined benefit pensions"
+    level_series: "state_local_employee_defined_benefit_pension_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  money_market_funds:
+    label: "Money market funds"
+    level_series: "money_market_funds_treasuries"
+    bills_series: "money_market_funds_bills"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  mutual_funds:
+    label: "Mutual funds"
+    level_series: "mutual_funds_treasuries"
+    bills_series: "mutual_funds_bills"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  closed_end_funds:
+    label: "Closed-end funds"
+    level_series: "closed_end_funds_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  exchange_traded_funds:
+    label: "Exchange-traded funds"
+    level_series: "exchange_traded_funds_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  government_sponsored_enterprises:
+    label: "Government-sponsored enterprises"
+    level_series: "government_sponsored_enterprises_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  asset_backed_securities_issuers:
+    label: "ABS issuers"
+    level_series: "asset_backed_securities_issuers_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  security_brokers_and_dealers:
+    label: "Security brokers and dealers"
+    level_series: "security_brokers_and_dealers_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+    warnings:
+      - "Broker-dealer Treasury holdings are net and require careful interpretation."
+
+  holding_companies:
+    label: "Holding companies"
+    level_series: "holding_companies_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+
+  other_financial_business:
+    label: "Other financial business"
+    level_series: "other_financial_business_treasuries"
+    method_priority: ["direct_z1", "revaluation_inference_weak"]
+    warnings:
+      - "The Z.1 Treasury line for this sector may map to a narrow underlying economic concept."
+
+  deposit_user_narrow_proxy:
+    label: "Deposit-user narrow proxy"
+    formula_level: "households_nonprofits + nonfinancial_corporates + state_local_governments"
+    method_priority: ["computed_identity"]
+    warnings:
+      - "Narrow proxy omits some domestic non-bank Treasury holders."
+
+  domestic_nonbank_residual_broad:
+    label: "Domestic non-bank residual broad"
+    formula_level: "all_holders_total - fed - foreigners_total - bank_broad_private_depositories_marketable_proxy"
+    method_priority: ["computed_identity", "revaluation_inference"]
+    warnings:
+      - "Broad residual inherits measurement error from all upstream blocks."
+
+  discrepancy:
+    label: "Discrepancy"
+    level_series: "discrepancy_treasuries"
+    method_priority: ["direct_z1"]
+    warnings:
+      - "Reconciliation object only; do not treat as an atomic holder sector maturity estimate."

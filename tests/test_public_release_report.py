@@ -47,10 +47,17 @@ def test_public_release_report_builds_from_toy_inputs(tmp_path):
 
     sector = pd.read_csv(artifacts.sector_output_path, parse_dates=["date"])
     assert set(REQUIRED_PUBLIC_PREVIEW_COLUMNS).issubset(set(sector.columns))
+    assert {"node_type", "estimand_class", "estimator_family", "high_confidence_flag", "history_start_reason"}.issubset(
+        set(sector.columns)
+    )
     assert set(DEFAULT_PUBLIC_PREVIEW_SECTORS).issubset(set(sector["sector_key"]))
     assert not set(DEFAULT_OPTIONAL_BANK_SECTORS) & set(sector["sector_key"])
     assert sector["date"].max() == pd.Timestamp("2025-12-31")
     assert sector["date"].nunique() == 4
+    fed = sector[sector["sector_key"] == "fed"].iloc[0]
+    assert fed["node_type"] == "atomic"
+    assert fed["estimand_class"] == "exact_security_level_wam"
+    assert bool(fed["high_confidence_flag"]) is True
 
     manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == PUBLIC_PREVIEW_SCHEMA_VERSION
@@ -98,6 +105,7 @@ def test_public_release_report_can_write_optional_summary_json(tmp_path):
     assert summary["machine_readable_outputs"]["public_release_summary"] == str(summary_path)
     assert summary["excluded_optional_sectors"] == DEFAULT_OPTIONAL_BANK_SECTORS
     assert any(row["sector_key"] == "fed" and row["included"] for row in summary["sector_coverage"])
+    assert any(row["sector_key"] == "fed" and row["node_type"] == "atomic" for row in summary["sector_coverage"])
     assert any(row["sector_key"] == "bank_us_affiliated_areas" and not row["included"] for row in summary["sector_coverage"])
     assert any(row["sector_key"] == "foreigners_total" and row["interpretation_class"] == "survey_anchored" for row in summary["sector_interpretation"])
     assert summary["validation"]["overall_status"] == "pass"

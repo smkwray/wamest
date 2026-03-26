@@ -171,6 +171,57 @@ The acceptance build is pinned to:
 
 The acceptance build fails if any required artifact is missing, any required default sector is missing, the schema-required columns or JSON fields are missing, or optional bank sectors appear in the stable default output.
 
+## V0.2 full-coverage research release
+
+The next release stage is a separate research surface. It does not change the frozen `v0.1` preview contract.
+
+The standard live full-coverage build is:
+
+```bash
+make full-coverage-release PYTHON=python3
+```
+
+That target:
+
+- uses `--coverage-scope full`
+- defaults to the live Fed Z.1 path with `source-provider=auto`
+- supplements missing required-sector level series from configured FRED mappings when the Fed release only exposes the matching transactions series
+- requires `FRED_API_KEY` in the environment for that supplement path
+
+The deterministic contract build for the same surface is:
+
+```bash
+make full-coverage-contract PYTHON=python3
+```
+
+That target stays pinned to the toy input bundle and does not depend on live FRED calls.
+
+Both commands build the separate `v0.2` artifact set under `outputs/full_coverage_release/`:
+
+- `canonical_atomic_sector_maturity.csv`
+- `latest_atomic_sector_snapshot.csv`
+- `high_confidence_sector_maturity.csv`
+- `reconciliation_nodes.csv`
+- `required_sector_inventory.csv`
+- `full_coverage_report.md`
+- `run_manifest.json`
+- `full_coverage_summary.json`
+
+The full-coverage release path:
+
+- uses `--coverage-scope full`
+- defaults to the Fed Z.1 source path
+- in the standard live workflow, supplements required-sector level series that are missing from the Fed release zip but available through configured FRED mappings
+- keeps weak sectors in the output with explicit tiering
+- allows ragged histories instead of forcing a shared start date
+- uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
+- marks long-history carry rows with `history_preserving_backfill`
+- writes a `required_sector_inventory.csv` artifact covering method priority, bills-series availability, history span, and current backfill/promotion usage
+- publishes reconciliation diagnostics for formula and parent/child rollups
+- treats the high-confidence subset as a filter, not as the scope boundary
+
+See [docs/full_coverage_output_schema.md](docs/full_coverage_output_schema.md) for the separate artifact contract.
+
 ## Advanced workflow outline
 
 1. Fetch or provide a Z.1 input containing the selected Treasury series.
@@ -179,6 +230,11 @@ The acceptance build fails if any required artifact is missing, any required def
    python3 scripts/build_sector_panel.py --source-provider auto
    ```
    The default Z.1 catalog uses an explicit FRED allowlist for `level`, `transactions`, and `revaluation`. `other_volume` remains explicitly unsupported in the FRED path and is carried as missing.
+   To build the broader full-coverage scaffold instead:
+   ```bash
+   python3 scripts/build_sector_panel.py --coverage-scope full --source-provider fed
+   ```
+   That path uses `configs/z1_series_catalog_full.yaml` and `configs/sector_definitions_full.yaml`. The standard live release still starts from the Fed Z.1 source path, but it can now supplement missing required-sector level series from configured FRED mappings where the Fed release zip only exposes transactions.
 3. Fetch or provide H.15 Treasury constant-maturity curves and build benchmark price returns:
    ```bash
    python3 scripts/build_benchmark_returns.py --source-provider auto
@@ -227,6 +283,10 @@ The acceptance build fails if any required artifact is missing, any required def
      --benchmark-family frn_proxy_from_nominal \
      --factor-family key_rate_buckets_from_nominal
    ```
+   To calibrate from the full-coverage scaffold panel defaults instead:
+   ```bash
+   python3 scripts/calibrate_fed.py --coverage-scope full --source-provider fed
+   ```
 5. Estimate effective maturity metrics:
    ```bash
    python3 scripts/estimate_effective_maturity.py \
@@ -243,6 +303,10 @@ The acceptance build fails if any required artifact is missing, any required def
      --benchmark-family tips_real_yield_constant_maturity \
      --benchmark-family frn_proxy_from_nominal \
      --factor-family key_rate_buckets_from_nominal
+   ```
+   To estimate from the full-coverage scaffold panel defaults instead:
+   ```bash
+   python3 scripts/estimate_effective_maturity.py --coverage-scope full --source-provider fed
    ```
    Holdable families share the simplex and publish metrics like `tips_share` and `frn_share`. Factor families stay outside the simplex and publish `factor_exposure_kr_*` style outputs, so curve-shape buckets can enter without corrupting share metrics. As with holdable families, a block only enters once it is fully populated for the current rolling window.
 6. Build the text summary report:

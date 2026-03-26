@@ -1,0 +1,456 @@
+nodes:
+  all_holders_total:
+    label: "All sector holdings total"
+    node_type: "rollup"
+    sector_family: "aggregate"
+    parent_key: null
+    is_canonical: true
+    required_for_full_coverage: false
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "low"
+    history_start_reason: "Use the longest feasible quarterly Z.1 aggregate history."
+
+  fed:
+    label: "Monetary authority / Fed"
+    node_type: "atomic"
+    sector_family: "fed"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "low"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history; exact SOMA overlay only where public holdings history exists."
+    release_window_promotion_eligible: true
+
+  foreigners_total:
+    label: "Foreigners total"
+    node_type: "atomic"
+    sector_family: "foreign"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Preserve the longest feasible Z.1 and TIC anchor history; do not reset history to the SLT era alone."
+    release_window_promotion_eligible: true
+
+  foreigners_official:
+    label: "Foreign official"
+    node_type: "auxiliary"
+    sector_family: "foreign"
+    parent_key: "foreigners_total"
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible TIC-supported official split without truncating the total foreign history."
+
+  foreigners_private:
+    label: "Foreign private"
+    node_type: "auxiliary"
+    sector_family: "foreign"
+    parent_key: "foreigners_total"
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use total-minus-official or direct TIC split support where available without truncating foreign history."
+
+  bank_us_chartered:
+    label: "U.S.-chartered depositories"
+    node_type: "atomic"
+    sector_family: "bank"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history with bank-constraint overlays where available."
+    release_window_promotion_eligible: true
+
+  bank_foreign_banking_offices_us:
+    label: "Foreign banking offices in the U.S."
+    node_type: "atomic"
+    sector_family: "bank"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: true
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history; FFIEC 002 detail should improve support without defining the full series start."
+    release_window_promotion_eligible: true
+
+  bank_us_affiliated_areas:
+    label: "Banks in U.S.-affiliated areas"
+    node_type: "atomic"
+    sector_family: "bank"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: true
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history plus supplements where available."
+    release_window_promotion_eligible: true
+
+  credit_unions_marketable_proxy:
+    label: "Credit unions marketable Treasury proxy"
+    node_type: "proxy"
+    sector_family: "bank_proxy"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Keep the longest feasible quarterly proxy history until a cleaner direct public Treasury concept is available."
+
+  bank_reserve_access_core:
+    label: "Banks reserve-access core"
+    node_type: "auxiliary"
+    sector_family: "bank"
+    parent_key: null
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: true
+    concept_risk: "medium"
+    history_start_reason: "Auxiliary bank perimeter assembled from component sectors."
+
+  bank_broad_private_depositories_marketable_proxy:
+    label: "Banks broad private-depositories marketable proxy"
+    node_type: "auxiliary"
+    sector_family: "bank_proxy"
+    parent_key: null
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: true
+    concept_risk: "high"
+    history_start_reason: "Auxiliary proxy perimeter assembled from component sectors."
+
+  households_nonprofits:
+    label: "Households and nonprofits"
+    node_type: "residual"
+    sector_family: "residual"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Use the longest feasible Z.1 residual-style history and label residual interpretation explicitly."
+
+  nonfinancial_corporates:
+    label: "Nonfinancial corporate business"
+    node_type: "atomic"
+    sector_family: "domestic_direct"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history; maturity remains inferred."
+    release_window_promotion_eligible: true
+
+  nonfinancial_noncorporate_business:
+    label: "Nonfinancial noncorporate business"
+    node_type: "atomic"
+    sector_family: "domestic_direct"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history even if the public concept is mixed and weak."
+    release_window_promotion_eligible: true
+
+  state_local_governments:
+    label: "State and local governments"
+    node_type: "atomic"
+    sector_family: "domestic_direct"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history; maturity remains inferred."
+    release_window_promotion_eligible: true
+
+  deposit_user_narrow_proxy:
+    label: "Deposit-user narrow proxy"
+    node_type: "proxy"
+    sector_family: "narrow_proxy"
+    parent_key: null
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Auxiliary proxy assembled from component sectors."
+
+  domestic_nonbank_residual_broad:
+    label: "Domestic non-bank residual broad"
+    node_type: "residual"
+    sector_family: "residual"
+    parent_key: null
+    is_canonical: false
+    required_for_full_coverage: false
+    included_in_public_preview_default: true
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Residual closure sector assembled from stronger upstream blocks."
+
+  property_casualty_insurers:
+    label: "Property-casualty insurers"
+    node_type: "atomic"
+    sector_family: "insurance"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path even if maturity support is sparse."
+    release_window_promotion_eligible: true
+
+  life_insurers:
+    label: "Life insurers"
+    node_type: "atomic"
+    sector_family: "insurance"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path even if maturity support is sparse."
+    release_window_promotion_eligible: true
+
+  private_defined_benefit_pensions:
+    label: "Private defined benefit pensions"
+    node_type: "atomic"
+    sector_family: "pension"
+    parent_key: "private_pension_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path; annual direct anchors should not define the full start date."
+    release_window_promotion_eligible: true
+
+  private_defined_contribution_pensions:
+    label: "Private defined contribution pensions"
+    node_type: "atomic"
+    sector_family: "pension"
+    parent_key: "private_pension_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path; annual direct anchors should not define the full start date."
+    release_window_promotion_eligible: true
+
+  federal_defined_benefit_pensions:
+    label: "Federal defined benefit pensions"
+    node_type: "atomic"
+    sector_family: "pension"
+    parent_key: "federal_pension_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path."
+    release_window_promotion_eligible: true
+
+  federal_defined_contribution_pensions:
+    label: "Federal defined contribution pensions"
+    node_type: "atomic"
+    sector_family: "pension"
+    parent_key: "federal_pension_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path."
+    release_window_promotion_eligible: true
+
+  state_local_employee_defined_benefit_pensions:
+    label: "State and local government employee defined benefit pensions"
+    node_type: "atomic"
+    sector_family: "pension"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Canonical history should prefer the longest feasible Z.1 path."
+    release_window_promotion_eligible: true
+
+  private_pension_total:
+    label: "Private pension total"
+    node_type: "rollup"
+    sector_family: "pension"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: false
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Reconciliation node for private pension components."
+
+  federal_pension_total:
+    label: "Federal pension total"
+    node_type: "rollup"
+    sector_family: "pension"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: false
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Reconciliation node for federal pension components."
+
+  money_market_funds:
+    label: "Money market funds"
+    node_type: "atomic"
+    sector_family: "fund"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Preserve the longest feasible Z.1 history; use SEC N-MFP as a direct overlay from 2010 onward, not as the canonical start date."
+    release_window_promotion_eligible: true
+
+  mutual_funds:
+    label: "Mutual funds"
+    node_type: "atomic"
+    sector_family: "fund"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Preserve the longest feasible Z.1 history; use SEC N-PORT as a later direct overlay, not as the canonical start date."
+    release_window_promotion_eligible: true
+
+  closed_end_funds:
+    label: "Closed-end funds"
+    node_type: "atomic"
+    sector_family: "fund"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Preserve the longest feasible Z.1 history; use SEC N-PORT as a later direct overlay, not as the canonical start date."
+    release_window_promotion_eligible: true
+
+  exchange_traded_funds:
+    label: "Exchange-traded funds"
+    node_type: "atomic"
+    sector_family: "fund"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Preserve the longest feasible Z.1 history; use SEC N-PORT as a later direct overlay, not as the canonical start date."
+    release_window_promotion_eligible: true
+
+  government_sponsored_enterprises:
+    label: "Government-sponsored enterprises"
+    node_type: "atomic"
+    sector_family: "other_financial"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history."
+    release_window_promotion_eligible: true
+
+  asset_backed_securities_issuers:
+    label: "ABS issuers"
+    node_type: "atomic"
+    sector_family: "other_financial"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history even if maturity identification remains weak."
+    release_window_promotion_eligible: true
+
+  security_brokers_and_dealers:
+    label: "Security brokers and dealers"
+    node_type: "atomic"
+    sector_family: "dealer"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history and treat netting / benchmark-imposed revaluation risks as metadata."
+    release_window_promotion_eligible: true
+
+  holding_companies:
+    label: "Holding companies"
+    node_type: "atomic"
+    sector_family: "other_financial"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "medium"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history with Y-9C or NIC support where available."
+    release_window_promotion_eligible: true
+
+  other_financial_business:
+    label: "Other financial business"
+    node_type: "atomic"
+    sector_family: "other_financial"
+    parent_key: "all_holders_total"
+    is_canonical: true
+    required_for_full_coverage: true
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "high"
+    history_start_reason: "Use the longest feasible Z.1 quarterly history and treat concept narrowness as metadata."
+    release_window_promotion_eligible: true
+
+  discrepancy:
+    label: "Discrepancy"
+    node_type: "rollup"
+    sector_family: "reconciliation"
+    parent_key: null
+    is_canonical: true
+    required_for_full_coverage: false
+    included_in_public_preview_default: false
+    included_in_optional_bank_paths: false
+    concept_risk: "low"
+    history_start_reason: "Reconciliation node only; do not estimate maturity as if it were an atomic holder sector."

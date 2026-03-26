@@ -14,13 +14,14 @@ from treasury_sector_maturity.benchmark_sets import (
     normalized_family_list,
     parse_curve_file_overrides,
 )
+from treasury_sector_maturity.coverage import resolve_estimation_scope
 from treasury_sector_maturity.estimation import EstimationSettings, estimate_effective_maturity_panel
 from treasury_sector_maturity.utils import load_yaml, read_table, write_table
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Estimate effective maturity metrics from sector revaluation returns.")
-    parser.add_argument("--z1-panel", required=True)
+    parser.add_argument("--z1-panel", default=None)
     parser.add_argument("--h15-file")
     parser.add_argument(
         "--curve-file",
@@ -41,16 +42,23 @@ def main() -> None:
         help="Optional repeated factor benchmark family key such as key_rate_buckets_from_nominal.",
     )
     parser.add_argument("--source-provider", default="auto", choices=["auto", "fed", "fred"])
+    parser.add_argument("--coverage-scope", default="default", choices=["default", "full"])
     parser.add_argument("--series-config", default="configs/h15_series.yaml")
     parser.add_argument("--model-config", default="configs/model_defaults.yaml")
-    parser.add_argument("--sector-defs", default="configs/sector_definitions.yaml")
-    parser.add_argument("--interval-calibration-file", default="data/processed/fed_interval_calibration.csv")
+    parser.add_argument("--sector-defs", default=None)
+    parser.add_argument("--interval-calibration-file", default=None)
     parser.add_argument("--foreign-nowcast-file", default="data/processed/foreign_nowcast_panel.csv")
     parser.add_argument("--bank-constraint-file", default="data/processed/bank_constraint_panel.csv")
-    parser.add_argument("--out", default="data/processed/sector_effective_maturity.csv")
+    parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
-    sector_panel = read_table(args.z1_panel)
+    scope_cfg = resolve_estimation_scope(args.coverage_scope)
+    z1_panel_path = args.z1_panel or scope_cfg["z1_panel"]
+    sector_defs_path = args.sector_defs or scope_cfg["sector_defs_path"]
+    interval_calibration_file = args.interval_calibration_file or scope_cfg["interval_calibration_file"]
+    out_path = args.out or scope_cfg["out"]
+
+    sector_panel = read_table(z1_panel_path)
 
     model_cfg = load_yaml(args.model_config)
     est_cfg = model_cfg.get("estimation", {})
@@ -85,7 +93,7 @@ def main() -> None:
     )
 
     interval_calibration = None
-    calibration_path = Path(args.interval_calibration_file)
+    calibration_path = Path(interval_calibration_file)
     if calibration_path.exists():
         interval_calibration = read_table(calibration_path)
 
@@ -108,11 +116,11 @@ def main() -> None:
         interval_settings=interval_cfg,
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
-        sector_config_path=args.sector_defs,
+        sector_config_path=sector_defs_path,
     )
-    write_table(result, args.out)
+    write_table(result, out_path)
 
-    print(f"Wrote {args.out}")
+    print(f"Wrote {out_path}")
 
 
 if __name__ == "__main__":

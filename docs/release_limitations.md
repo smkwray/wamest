@@ -14,6 +14,8 @@ The default public path is:
 
 That path is the intended public baseline for the first release preview.
 
+The frozen preview remains the stable public baseline even as the repository adds a separate `v0.2` full-coverage research release path.
+
 ## Optional and experimental paths
 
 These paths are supported in the repository but are not part of the stable public baseline:
@@ -29,6 +31,17 @@ These workflows are useful for analysis, but they are more fragile than the defa
 
 The standalone `scripts/calibrate_fed.py` and `scripts/estimate_effective_maturity.py` defaults now use the broader hybrid research config in `configs/model_defaults.yaml`; the public preview remains pinned to the nominal-only config above.
 
+The separate full-coverage research release path:
+
+- uses the full-scope Fed Z.1 build by default
+- in the standard live workflow, supplements missing required-sector level series from configured FRED mappings when the Fed release only exposes transactions
+- keeps weak sectors in the output with explicit evidence tiering
+- allows ragged histories instead of forcing a shared start date
+- may use short-window promotion for selected stronger sectors before falling back to history-preserving carry rows
+- marks carried long-history rows explicitly instead of pretending they are equally observed
+- separates canonical atomic, snapshot, high-confidence, and reconciliation-node artifacts
+- does not change the frozen preview path
+
 ## Sector caveats
 
 - **Fed / SOMA**: strongest public benchmark and calibration set.
@@ -43,6 +56,8 @@ The standalone `scripts/calibrate_fed.py` and `scripts/estimate_effective_maturi
 - identical observability across all sectors
 - one-number certainty for weakly observed sector maturity
 - a guarantee that optional bank-perimeter workflows are available without additional public inputs
+- a guarantee that every sector has the same historical span in the full-coverage release
+- a guarantee that weak sectors become exact or fully identified
 
 ## Public-facing language to prefer
 
@@ -51,6 +66,7 @@ Use:
 - research preview
 - script-first
 - default nominal-only path
+- separate full-coverage research release
 - optional experimental extensions
 - release limitations
 

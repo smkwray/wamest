@@ -14,6 +14,13 @@ from .calibration import (
     calibrate_fed_revaluation_mapping,
     summarize_interval_calibration,
 )
+from .coverage import (
+    DEFAULT_COVERAGE_REGISTRY_PATH,
+    load_coverage_registry,
+    optional_bank_sector_keys,
+    preview_catalog_sector_keys,
+    public_preview_sector_keys,
+)
 from .estimation import EstimationSettings, attach_revaluation_returns, estimate_effective_maturity_panel
 from .ffiec import build_bank_constraint_panel as build_bank_constraint_panel_frame
 from .h15 import load_h15_curve_file
@@ -46,27 +53,9 @@ from .z1 import (
     parse_z1_ddp_csv,
 )
 
-DEFAULT_PUBLIC_PREVIEW_SECTORS = [
-    "fed",
-    "foreigners_total",
-    "foreigners_official",
-    "foreigners_private",
-    "bank_us_chartered",
-    "credit_unions_marketable_proxy",
-    "households_nonprofits",
-    "nonfinancial_corporates",
-    "state_local_governments",
-    "deposit_user_narrow_proxy",
-    "domestic_nonbank_residual_broad",
-    "all_holders_total",
-]
-
-DEFAULT_OPTIONAL_BANK_SECTORS = [
-    "bank_foreign_banking_offices_us",
-    "bank_reserve_access_core",
-    "bank_broad_private_depositories_marketable_proxy",
-    "bank_us_affiliated_areas",
-]
+DEFAULT_PUBLIC_PREVIEW_SECTORS = public_preview_sector_keys(DEFAULT_COVERAGE_REGISTRY_PATH)
+DEFAULT_OPTIONAL_BANK_SECTORS = optional_bank_sector_keys(DEFAULT_COVERAGE_REGISTRY_PATH)
+PUBLIC_PREVIEW_CATALOG_SECTORS = preview_catalog_sector_keys(DEFAULT_COVERAGE_REGISTRY_PATH)
 
 PUBLIC_PREVIEW_SCHEMA_VERSION = "1.0.0"
 
@@ -908,12 +897,16 @@ def _artifact_record(artifact: FetchArtifacts) -> dict[str, Any]:
 
 def _build_sector_coverage_rows(frame: pd.DataFrame) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for sector_key in DEFAULT_PUBLIC_PREVIEW_SECTORS + DEFAULT_OPTIONAL_BANK_SECTORS:
+    registry = load_coverage_registry(DEFAULT_COVERAGE_REGISTRY_PATH)
+    for sector_key in PUBLIC_PREVIEW_CATALOG_SECTORS:
+        node = registry.get(sector_key)
         sub = frame[frame["sector_key"] == sector_key].copy()
         if sub.empty:
             rows.append(
                 {
                     "sector_key": sector_key,
+                    "node_type": node.node_type if node else "n/a",
+                    "required": str(bool(node.required_for_full_coverage)) if node else "n/a",
                     "dates": "not included",
                     "rows": "0",
                     "level": "n/a",
@@ -926,6 +919,8 @@ def _build_sector_coverage_rows(frame: pd.DataFrame) -> list[dict[str, str]]:
         rows.append(
             {
                 "sector_key": sector_key,
+                "node_type": node.node_type if node else "n/a",
+                "required": str(bool(node.required_for_full_coverage)) if node else "n/a",
                 "dates": _format_date_span(pd.to_datetime(sub["date"], errors="coerce")),
                 "rows": str(len(sub)),
                 "level": _join_unique(sub.get("level_evidence_tier")),
@@ -939,12 +934,21 @@ def _build_sector_coverage_rows(frame: pd.DataFrame) -> list[dict[str, str]]:
 
 def _build_sector_coverage_summary(frame: pd.DataFrame) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for sector_key in DEFAULT_PUBLIC_PREVIEW_SECTORS + DEFAULT_OPTIONAL_BANK_SECTORS:
+    registry = load_coverage_registry(DEFAULT_COVERAGE_REGISTRY_PATH)
+    for sector_key in PUBLIC_PREVIEW_CATALOG_SECTORS:
+        node = registry.get(sector_key)
         sub = frame[frame["sector_key"] == sector_key].copy()
         coverage_min, coverage_max = _numeric_min_max(sub.get("coverage_ratio"))
         rows.append(
             {
                 "sector_key": sector_key,
+                "node_type": node.node_type if node else None,
+                "sector_family": node.sector_family if node else None,
+                "parent_key": node.parent_key if node else None,
+                "is_canonical": bool(node.is_canonical) if node else False,
+                "required_for_full_coverage": bool(node.required_for_full_coverage) if node else False,
+                "concept_risk": node.concept_risk if node else None,
+                "history_start_reason": node.history_start_reason if node else None,
                 "included": not sub.empty,
                 "date_start": _series_date_start(sub.get("date")),
                 "date_end": _series_date_end(sub.get("date")),
@@ -1290,7 +1294,9 @@ def _detect_frame_vintage(frame: pd.DataFrame) -> str | None:
 
 def _build_sector_interpretation_summary(frame: pd.DataFrame) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for sector_key in DEFAULT_PUBLIC_PREVIEW_SECTORS + DEFAULT_OPTIONAL_BANK_SECTORS:
+    registry = load_coverage_registry(DEFAULT_COVERAGE_REGISTRY_PATH)
+    for sector_key in PUBLIC_PREVIEW_CATALOG_SECTORS:
+        node = registry.get(sector_key)
         rule = dict(
             SECTOR_INTERPRETATION_RULES.get(
                 sector_key,
@@ -1305,6 +1311,8 @@ def _build_sector_interpretation_summary(frame: pd.DataFrame) -> list[dict[str, 
         rows.append(
             {
                 "sector_key": sector_key,
+                "node_type": node.node_type if node else None,
+                "required_for_full_coverage": bool(node.required_for_full_coverage) if node else False,
                 "included": included,
                 "interpretation_class": rule["interpretation_class"],
                 "basis": rule["basis"],

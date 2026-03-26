@@ -32,3 +32,28 @@ Reference-build stance:
 
 - the repo now treats the first public-preview milestone as a fixed reference build, not a rolling latest-data promise
 - the GitHub Actions public-preview workflow is manual-only so a tagged release can remain the citable artifact boundary
+
+## Wave 2: Full-Coverage Research Release
+
+Included in this release path:
+
+- a separate full-coverage release surface for required atomic Z.1 holder sectors
+- a full-scope Fed Z.1 default for the sector panel, calibration, and estimation flow
+- configured FRED level supplements for required sectors whose level series are missing from the Fed release zip
+- ragged historical spans where sector source availability differs
+- explicit tiering for weakly identified sectors instead of dropping them from output
+- a canonical atomic panel, a latest common-quarter snapshot, a high-confidence subset, and reconciliation-node output
+- short-window promotion for selected stronger sectors before history-preserving backfill is used
+- explicit `history_preserving_backfill` flags plus reconciliation diagnostics for formula and parent/child rollups
+- coverage-honest reporting and validation that remain separate from the frozen public-preview contract
+
+Excluded from this release path:
+
+- changes to the frozen `v0.1` public preview contract
+- any promise that weak sectors become exact
+- any requirement that all sectors share the same historical start date
+
+Reference stance:
+
+- the full-coverage path is a separate research release, not a rewrite of the existing preview baseline
+- the preview remains unchanged and citable on its original artifact contract
