@@ -43,13 +43,14 @@ Rules:
 - allows ragged histories when some sectors start later than others
 - excludes non-atomic reconciliation or roll-up nodes
 - retains the same core maturity fields used in the preview path, plus the richer coverage metadata
-- includes `history_preserving_backfill` so early rows filled from the nearest available sector estimate remain explicit and easy to filter
+- includes `history_preserving_backfill` so leading warmup rows filled from the nearest available sector estimate remain explicit and easy to filter
 - may include `release_window_override` rows where selected stronger sectors were estimated with a shorter window before any carry-style backfill was used
 
 Expected interpretation:
 
 - point estimates are the best available estimates under the public-data stack
-- intervals communicate uncertainty and weak identification
+- calibrated uncertainty bands communicate uncertainty and weak identification
+- `effective_duration_years` is only populated when a distinct duration map is actually supplied; otherwise `effective_duration_status` records that the metric is not separately estimated
 - missing early history for a sector is allowed only when the sector has no feasible public estimate for those dates
 
 ## Latest snapshot
@@ -58,8 +59,8 @@ Expected interpretation:
 
 Rules:
 
-- one row per required atomic sector
-- the snapshot quarter is the latest quarter shared across all required atomic sectors
+- one row per required atomic sector with non-null level history in the release build
+- the snapshot quarter is the latest quarter shared across those covered required atomic sectors
 - the row for each sector is taken from that common quarter
 - sectors without a row at the resolved common quarter fail validation
 
@@ -98,13 +99,14 @@ Rules:
 - records whether a sector has a direct `bills_series`
 - records whether the sector is explicitly eligible for release-window promotion in `configs/coverage_registry.yaml`
 - records the feasible history span, underlying level/transactions/revaluation row availability, and current `history_preserving_backfill` / `release_window_override` usage from the emitted canonical artifact
+- records current provenance fields such as point-estimate origin, uncertainty-band origin, and whether the current level path was supplemented from FRED
 
 ## Validation semantics
 
 The full-coverage release should validate the following:
 
 - every required atomic sector appears in the canonical atomic panel for every date where that sector has a non-null full-scope level
-- the latest snapshot quarter is the minimum of the per-sector latest available dates across required atomic sectors
+- the latest snapshot quarter is the minimum of the per-sector latest available dates across required atomic sectors with non-null level history in the build
 - the high-confidence subset is a strict filter of the canonical atomic panel
 - reconciliation nodes do not leak into the canonical atomic artifact
 - preview validation remains separate and unchanged
@@ -121,6 +123,7 @@ The full-coverage release should validate the following:
 - weakest-sector summary keyed by evidence tier, concept risk, and estimand class
 - high-confidence subset counts and sector list
 - validation results covering row presence, non-null required-sector estimate coverage, and bounded estimate-coverage ratios
+- row-level provenance fields including `level_source_provider_used`, `level_supplemented_from_fred`, `point_estimate_origin`, `interval_origin`, and `effective_duration_status`
 - reconciliation diagnostics for formula nodes and parent/child rollups
 - provenance and source-path summary
 

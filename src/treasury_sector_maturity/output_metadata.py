@@ -19,6 +19,7 @@ def annotate_estimated_output(
     foreign_nowcast: pd.DataFrame | None = None,
     bank_constraints: pd.DataFrame | None = None,
     sector_config_path: str | Path = "configs/sector_definitions.yaml",
+    annotation_mode: str = "default",
 ) -> pd.DataFrame:
     out = result.copy()
     out["date"] = pd.to_datetime(out.get("date"), errors="coerce")
@@ -70,7 +71,12 @@ def annotate_estimated_output(
         sector_config_path=sector_config_path,
     )
 
-    return _apply_annotation_and_bands(out, interval_calibration=interval_calibration, interval_settings=interval_settings)
+    return _apply_annotation_and_bands(
+        out,
+        interval_calibration=interval_calibration,
+        interval_settings=interval_settings,
+        annotation_mode=annotation_mode,
+    )
 
 
 def _prepare_foreign_support_panel(foreign_nowcast: pd.DataFrame | None) -> pd.DataFrame:
@@ -347,16 +353,19 @@ def _apply_annotation_and_bands(
     df: pd.DataFrame,
     interval_calibration: pd.DataFrame | None = None,
     interval_settings: dict[str, Any] | None = None,
+    annotation_mode: str = "default",
 ) -> pd.DataFrame:
     if df.empty:
         return df
 
-    annotation_rows = df.apply(
-        lambda row: pd.Series(_annotation_fields(row.get("sector_key"), row.get("method_priority"))),
-        axis=1,
-    )
+    annotation_rows = df.apply(lambda row: pd.Series(_annotation_fields(row, annotation_mode=annotation_mode)), axis=1)
     out = pd.concat([df, annotation_rows], axis=1)
-    estimand_rows = out.apply(lambda row: pd.Series(_estimand_fields(row)), axis=1)
+    if "effective_duration_status" not in out.columns:
+        out["effective_duration_status"] = pd.NA
+    duration_missing = pd.to_numeric(out.get("effective_duration_years"), errors="coerce").isna()
+    out.loc[duration_missing & out["effective_duration_status"].isna(), "effective_duration_status"] = "not_separately_estimated"
+    out.loc[~duration_missing & out["effective_duration_status"].isna(), "effective_duration_status"] = "estimated_from_duration_map"
+    estimand_rows = out.apply(lambda row: pd.Series(_estimand_fields(row, annotation_mode=annotation_mode)), axis=1)
     out = pd.concat([out, estimand_rows], axis=1)
     out["observed_bill_share_available"] = out.get("bill_share_observed").notna()
     out["quality_tier"] = out["maturity_evidence_tier"]
@@ -369,16 +378,23 @@ def _apply_annotation_and_bands(
             lambda row: _calibrated_band_fields(row, calibration_profile=calibration_profile),
             axis=1,
         )
-    return pd.concat([out, band_rows], axis=1)
+    out = pd.concat([out, band_rows], axis=1)
+    out["interval_origin"] = out.apply(_interval_origin, axis=1)
+    return out
 
 
-def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
-    primary = _primary_method(method_priority)
-    sector_class = _sector_class(str(sector_key or ""))
+def _annotation_fields(row: pd.Series, *, annotation_mode: str = "default") -> dict[str, Any]:
+    sector_key = str(row.get("sector_key") or "")
+    primary = _primary_method(row.get("method_priority"))
+    sector_class = _sector_class(sector_key)
     level_basis, level_tier = _level_measurement(primary)
 
+    fed_maturity_basis = "soma_calibrated_revaluation_inference" if annotation_mode == "full_coverage" else "calibrated_model_inference"
+    fed_anchor_type = "soma_calibration_context" if annotation_mode == "full_coverage" else "exact_soma_overlay"
+    fed_concept_match = "calibrated" if annotation_mode == "full_coverage" else "direct"
+
     maturity_basis_map = {
-        "fed": "calibrated_model_inference",
+        "fed": fed_maturity_basis,
         "foreign": "survey_anchored_model_inference",
         "bank": "revaluation_inference",
         "bank_proxy": "proxy_and_revaluation_inference",
@@ -398,7 +414,7 @@ def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
         "domestic_direct": "D" if primary == "direct_z1_residual_style" else "C",
     }
     anchor_type_map = {
-        "fed": "exact_soma_overlay",
+        "fed": fed_anchor_type,
         "foreign": "shl_slt_anchor",
         "bank": "revaluation_inference",
         "bank_proxy": "proxy_constraint",
@@ -408,7 +424,7 @@ def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
         "domestic_direct": "direct_z1_revaluation",
     }
     concept_match_map = {
-        "fed": "direct",
+        "fed": fed_concept_match,
         "foreign": "anchor_consistent",
         "bank": "partial",
         "bank_proxy": "proxy",
@@ -417,7 +433,17 @@ def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
         "aggregate": "aggregate",
         "domestic_direct": "residual_style" if primary == "direct_z1_residual_style" else "direct",
     }
-    coverage_ratio_map = {
+    coverage_label_map = {
+        "fed": "observed_level_with_soma_calibration",
+        "foreign": "observed_level_with_external_anchor_support",
+        "bank": "observed_level_with_inferred_maturity",
+        "bank_proxy": "proxy_level_with_inferred_maturity",
+        "residual": "identity_level_with_inferred_maturity",
+        "narrow_proxy": "proxy_level_with_inferred_maturity",
+        "aggregate": "aggregate_level_with_inferred_maturity",
+        "domestic_direct": "observed_level_with_inferred_maturity",
+    }
+    legacy_coverage_ratio_map = {
         "fed": 1.0,
         "foreign": 1.0,
         "bank": 1.0,
@@ -434,11 +460,13 @@ def _annotation_fields(sector_key: Any, method_priority: Any) -> dict[str, Any]:
         "maturity_evidence_tier": maturity_tier_map[sector_class],
         "anchor_type": anchor_type_map[sector_class],
         "concept_match": concept_match_map[sector_class],
-        "coverage_ratio": coverage_ratio_map[sector_class],
+        "coverage_ratio": pd.NA if annotation_mode == "full_coverage" else legacy_coverage_ratio_map[sector_class],
+        "coverage_measurement_basis": "qualitative_placeholder" if annotation_mode == "full_coverage" else pd.NA,
+        "coverage_label": coverage_label_map[sector_class] if annotation_mode == "full_coverage" else pd.NA,
     }
 
 
-def _estimand_fields(row: pd.Series) -> dict[str, Any]:
+def _estimand_fields(row: pd.Series, *, annotation_mode: str = "default") -> dict[str, Any]:
     sector_key = str(row.get("sector_key") or "")
     primary = _primary_method(row.get("method_priority"))
     sector_class = _sector_class(sector_key)
@@ -457,7 +485,7 @@ def _estimand_fields(row: pd.Series) -> dict[str, Any]:
         "computed_series_proxy": "proxy_level_plus_revaluation_inference",
     }
     estimand_class_map = {
-        "fed": "exact_security_level_wam",
+        "fed": "soma_calibrated_duration_equivalent_inferred" if annotation_mode == "full_coverage" else "exact_security_level_wam",
         "foreign": "survey_anchored_maturity_mix",
         "bank": "constraint_anchored_maturity_mix",
         "bank_proxy": "constraint_anchored_maturity_mix",
@@ -469,7 +497,7 @@ def _estimand_fields(row: pd.Series) -> dict[str, Any]:
 
     high_confidence_flag = (
         maturity_tier in {"A", "B"}
-        and concept_match in {"direct", "anchor_consistent"}
+        and concept_match in {"direct", "anchor_consistent", "calibrated"}
         and sector_class in {"fed", "foreign"}
     )
 
@@ -478,6 +506,7 @@ def _estimand_fields(row: pd.Series) -> dict[str, Any]:
         "estimator_family": estimator_family_map.get(primary, "rolling_benchmark_weights"),
         "selection_reason": _selection_reason(primary),
         "high_confidence_flag": bool(high_confidence_flag),
+        "point_estimate_origin": _point_estimate_origin(row),
     }
 
 
@@ -494,6 +523,34 @@ def _selection_reason(primary: str) -> str:
         "computed_series_proxy": "proxy series retained because no cleaner public Treasury concept is available",
     }
     return reason_map.get(primary, "best available estimator selected under current public data limits")
+
+
+def _point_estimate_origin(row: pd.Series) -> str:
+    method = str(row.get("method") or "").strip()
+    if method == "rolling_benchmark_weights_plus_factors":
+        return "rolling_benchmark_weights_plus_factors"
+    if method == "rolling_benchmark_weights":
+        return "rolling_benchmark_weights"
+    primary = _primary_method(row.get("method_priority"))
+    return {
+        "computed_identity": "computed_identity",
+        "computed_from_total_minus_official": "computed_identity_plus_anchor",
+        "computed_series_proxy": "computed_series_proxy",
+        "direct_z1": "direct_level_plus_revaluation_inference",
+        "direct_z1_residual_style": "residual_level_plus_revaluation_inference",
+        "shl_slt_anchor": "survey_anchor_plus_model_inference",
+        "revaluation_inference": "rolling_benchmark_weights",
+        "revaluation_inference_weak": "rolling_benchmark_weights_weak",
+    }.get(primary, "best_available_public_estimator")
+
+
+def _interval_origin(row: pd.Series) -> str:
+    method = str(row.get("uncertainty_band_method") or "").strip()
+    if method == "fed_interval_calibration_with_sector_support":
+        return "fed_soma_calibrated_uncertainty_band"
+    if method == "sector_class_plus_fit_rmse_heuristic":
+        return "heuristic_uncertainty_band"
+    return "no_uncertainty_band"
 
 
 def _heuristic_band_fields(row: pd.Series) -> pd.Series:
@@ -623,11 +680,19 @@ def _calibrated_band_fields(row: pd.Series, calibration_profile: dict[str, Any])
     )
     total_multiplier = scale_multiplier * fit_multiplier * obs_multiplier * support_multiplier
 
-    duration_half_width = calibration_profile["metrics"]["effective_duration_years"]["half_width"] * total_multiplier
-    zero_coupon_half_width = calibration_profile["metrics"]["zero_coupon_equivalent_years"]["half_width"] * total_multiplier
-    bill_half_width = min(
-        0.49,
-        calibration_profile["metrics"]["bill_share"]["half_width"] * total_multiplier,
+    duration_metric = calibration_profile["metrics"].get("effective_duration_years")
+    zero_coupon_metric = calibration_profile["metrics"].get("zero_coupon_equivalent_years")
+    bill_metric = calibration_profile["metrics"].get("bill_share")
+    duration_half_width = (
+        float(duration_metric["half_width"]) * total_multiplier if duration_metric is not None else np.nan
+    )
+    zero_coupon_half_width = (
+        float(zero_coupon_metric["half_width"]) * total_multiplier if zero_coupon_metric is not None else np.nan
+    )
+    bill_half_width = (
+        min(0.49, float(bill_metric["half_width"]) * total_multiplier)
+        if bill_metric is not None
+        else np.nan
     )
     short_share = _as_float(row.get("short_share_le_1y"))
     short_support_lower, short_support_upper, short_support_source = _short_share_support_bounds(row, calibration_profile)
@@ -637,22 +702,26 @@ def _calibrated_band_fields(row: pd.Series, calibration_profile: dict[str, Any])
         calibration_profile["support_gap_weight"],
         calibration_profile["support_multiplier_cap"],
     )
-    short_half_width = min(
-        0.49,
-        calibration_profile["metrics"]["bill_share"]["half_width"]
-        * scale_multiplier
-        * fit_multiplier
-        * obs_multiplier
-        * short_support_multiplier,
+    short_half_width = (
+        min(
+            0.49,
+            float(bill_metric["half_width"])
+            * scale_multiplier
+            * fit_multiplier
+            * obs_multiplier
+            * short_support_multiplier,
+        )
+        if bill_metric is not None
+        else np.nan
     )
 
     duration = _as_float(row.get("effective_duration_years"))
     zero_coupon = _as_float(row.get("zero_coupon_equivalent_years"))
-    bill_lower = _bounded_lower(bill_share, bill_half_width, lower=0.0)
-    bill_upper = _bounded_upper(bill_share, bill_half_width, upper=1.0)
+    bill_lower = _bounded_lower(bill_share, bill_half_width, lower=0.0) if not math.isnan(bill_half_width) else pd.NA
+    bill_upper = _bounded_upper(bill_share, bill_half_width, upper=1.0) if not math.isnan(bill_half_width) else pd.NA
     bill_lower, bill_upper = _apply_support_interval(bill_lower, bill_upper, support_lower, support_upper)
-    short_lower = _bounded_lower(short_share, short_half_width, lower=0.0)
-    short_upper = _bounded_upper(short_share, short_half_width, upper=1.0)
+    short_lower = _bounded_lower(short_share, short_half_width, lower=0.0) if not math.isnan(short_half_width) else pd.NA
+    short_upper = _bounded_upper(short_share, short_half_width, upper=1.0) if not math.isnan(short_half_width) else pd.NA
     short_lower, short_upper = _apply_support_interval(
         short_lower,
         short_upper,
@@ -682,10 +751,10 @@ def _calibrated_band_fields(row: pd.Series, calibration_profile: dict[str, Any])
             "uncertainty_short_share_support_upper": _maybe_nullable_float(short_support_upper),
             "uncertainty_short_share_support_gap": _maybe_nullable_float(short_support_gap),
             "uncertainty_short_share_support_multiplier": short_support_multiplier,
-            "effective_duration_years_lower": _bounded_lower(duration, duration_half_width, lower=0.0),
-            "effective_duration_years_upper": _bounded_upper(duration, duration_half_width),
-            "zero_coupon_equivalent_years_lower": _bounded_lower(zero_coupon, zero_coupon_half_width, lower=0.0),
-            "zero_coupon_equivalent_years_upper": _bounded_upper(zero_coupon, zero_coupon_half_width),
+            "effective_duration_years_lower": _bounded_lower(duration, duration_half_width, lower=0.0) if not math.isnan(duration_half_width) else pd.NA,
+            "effective_duration_years_upper": _bounded_upper(duration, duration_half_width) if not math.isnan(duration_half_width) else pd.NA,
+            "zero_coupon_equivalent_years_lower": _bounded_lower(zero_coupon, zero_coupon_half_width, lower=0.0) if not math.isnan(zero_coupon_half_width) else pd.NA,
+            "zero_coupon_equivalent_years_upper": _bounded_upper(zero_coupon, zero_coupon_half_width) if not math.isnan(zero_coupon_half_width) else pd.NA,
             "bill_share_lower": bill_lower,
             "bill_share_upper": bill_upper,
             "short_share_le_1y_lower": short_lower,
@@ -770,9 +839,11 @@ def _build_interval_profile(
     }
     for metric_name, column in metric_specs.items():
         abs_error = pd.to_numeric(interval_calibration.get(column), errors="coerce")
+        if int(abs_error.notna().sum()) == 0:
+            continue
         half_width = _safe_quantile(abs_error, float(cfg["abs_error_quantile"]))
         if half_width is None:
-            return None
+            continue
         profile["metrics"][metric_name] = {
             "half_width": float(half_width),
             "n_obs": int(abs_error.notna().sum()),

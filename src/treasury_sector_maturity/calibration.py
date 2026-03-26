@@ -116,6 +116,7 @@ def build_fed_interval_calibration(
     benchmark_returns: pd.DataFrame,
     factor_returns: pd.DataFrame | None = None,
     settings: EstimationSettings | None = None,
+    strict_duration: bool = False,
 ) -> pd.DataFrame:
     settings = settings or EstimationSettings()
 
@@ -183,7 +184,11 @@ def build_fed_interval_calibration(
     rows = []
     for _, wrow in weights_df.iterrows():
         weight_series = wrow[asset_cols]
-        metrics = weights_to_summary_metrics(weight_series, maturity_years=maturity_years)
+        metrics = weights_to_summary_metrics(
+            weight_series,
+            maturity_years=maturity_years,
+            strict_duration=strict_duration,
+        )
         rows.append(
             {
                 "date": pd.Timestamp(wrow["date"]),
@@ -246,6 +251,8 @@ def summarize_interval_calibration(
     for metric_name, spec in INTERVAL_METRIC_SPECS.items():
         abs_error = pd.to_numeric(calibration.get(spec["abs_error_column"]), errors="coerce")
         signed_error = pd.to_numeric(calibration.get(spec["error_column"]), errors="coerce")
+        if int(abs_error.notna().sum()) == 0:
+            continue
         summary["metrics"][metric_name] = {
             "exact_column": spec["exact_column"],
             "estimated_column": spec["estimated_column"],

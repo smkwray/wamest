@@ -57,16 +57,16 @@ Target sector blocks:
 - a text-first output metadata report summarizing sector evidence tiers, uncertainty methods, foreign support kinds, and Fed calibration context
 - an optional machine-readable public-release summary JSON companion when `--summary-json-out` is passed
 - nominal, TIPS, FRN-proxy, and key-rate benchmark-return paths
-- inferred-output metadata with evidence tiers, support-aware Fed/SOMA-calibrated uncertainty intervals, and bill-share identified-set metadata for banks and residual sectors
+- inferred-output metadata with evidence tiers, support-aware Fed/SOMA-calibrated uncertainty bands, and bill-share identified-set metadata for banks and residual sectors
 - toy example data so the pipeline can run immediately
 - tests
 
 ## Current modeling stance
 
-- **Fed**: exact or near-exact, using security-level SOMA holdings
+- **Fed**: security-level SOMA provides the calibration truth set, but the current canonical maturity point estimate is still inferred from revaluation behavior unless an exact overlay is explicitly used
 - **Foreigners**: annual SHL benchmark + monthly SLT monthly nowcast with alternative-prior assumption bands; long-end composition is only filled where the anchor inputs actually support it
 - **Banks / credit unions**: exact levels; where public ladder constraints exist, bill share is anchored to bank-constraint identified sets and maturity remains support-aware Fed/SOMA-calibrated
-- **Domestic non-banks residual**: exact by identity on levels; bill share now carries closure-derived identified sets, while duration-style metrics remain support-aware Fed/SOMA-calibrated
+- **Domestic non-banks residual**: exact by identity on levels; bill share now carries closure-derived identified sets, while maturity-style metrics remain support-aware Fed/SOMA-calibrated
 
 ## Default workflow
 
@@ -215,7 +215,7 @@ The full-coverage release path:
 - keeps weak sectors in the output with explicit tiering
 - allows ragged histories instead of forcing a shared start date
 - uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
-- marks long-history carry rows with `history_preserving_backfill`
+- marks leading warmup carry rows with `history_preserving_backfill`
 - writes a `required_sector_inventory.csv` artifact covering method priority, bills-series availability, history span, and current backfill/promotion usage
 - publishes reconciliation diagnostics for formula and parent/child rollups
 - treats the high-confidence subset as a filter, not as the scope boundary
@@ -293,7 +293,7 @@ See [docs/full_coverage_output_schema.md](docs/full_coverage_output_schema.md) f
      --z1-panel data/interim/z1_sector_panel.csv \
      --source-provider auto
    ```
-   If `data/processed/fed_interval_calibration.csv` exists, the estimator uses it by default to emit support-aware Fed/SOMA-calibrated intervals instead of the older sector-class heuristic bands. If `data/processed/foreign_nowcast_panel.csv` is present, the estimator also merges the foreign monthly short-end support envelope automatically. If `data/processed/bank_constraint_panel.csv` is present, the estimator also merges direct bank bill-share constraints, derives formula-based bank and residual bill-share identified sets, and projects the published `bill_share` point back into those feasible bounds when needed.
+   If `data/processed/fed_interval_calibration.csv` exists, the estimator uses it by default to emit support-aware Fed/SOMA-calibrated uncertainty bands instead of the older sector-class heuristic bands. If `data/processed/foreign_nowcast_panel.csv` is present, the estimator also merges the foreign monthly short-end support envelope automatically. If `data/processed/bank_constraint_panel.csv` is present, the estimator also merges direct bank bill-share constraints, derives formula-based bank and residual bill-share identified sets, and projects the published `bill_share` point back into those feasible bounds when needed.
    The default model config now uses the richer hybrid benchmark contract. To force nominal-only parity with the public preview, pass `--model-config configs/model_public_preview.yaml`. To override the hybrid default explicitly, pass repeated holdable benchmark families plus any factor families you want:
    ```bash
    python3 -B scripts/estimate_effective_maturity.py \

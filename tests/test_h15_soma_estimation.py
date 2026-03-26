@@ -157,6 +157,7 @@ def test_weights_to_summary_metrics_distinguishes_bills_tips_and_frn():
             "tips_10y": 10.0,
             "frn_3m": 0.25,
         },
+        strict_duration=True,
     )
 
     assert np.isclose(metrics["bill_share"], 0.25)
@@ -164,6 +165,21 @@ def test_weights_to_summary_metrics_distinguishes_bills_tips_and_frn():
     assert np.isclose(metrics["coupon_share"], 0.75)
     assert np.isclose(metrics["tips_share"], 0.2)
     assert np.isclose(metrics["frn_share"], 0.2)
+    assert pd.isna(metrics["effective_duration_years"])
+    assert metrics["effective_duration_status"] == "not_separately_estimated"
+
+
+def test_weights_to_summary_metrics_uses_distinct_duration_map_when_provided():
+    weights = pd.Series({"2y": 0.4, "10y": 0.6})
+    metrics = weights_to_summary_metrics(
+        weights,
+        maturity_years={"2y": 2.0, "10y": 10.0},
+        duration_years={"2y": 1.8, "10y": 7.5},
+    )
+
+    assert np.isclose(metrics["zero_coupon_equivalent_years"], 6.8)
+    assert np.isclose(metrics["effective_duration_years"], 5.22)
+    assert metrics["effective_duration_status"] == "estimated_from_duration_map"
 
 
 def test_build_estimation_benchmark_blocks_separates_holdings_and_factors():
@@ -187,6 +203,7 @@ def test_effective_maturity_panel_accepts_multi_family_holdings_and_key_rate_fac
         settings=EstimationSettings(rolling_window_quarters=4),
         foreign_nowcast=_load_toy_foreign_nowcast(),
         bank_constraints=_load_toy_bank_constraints(),
+        annotation_mode="full_coverage",
     )
     assert not result.empty
     assert "frn_share" in result.columns
@@ -209,11 +226,13 @@ def test_effective_maturity_panel_from_toy_pipeline_inputs():
         settings=EstimationSettings(rolling_window_quarters=4),
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
+        annotation_mode="full_coverage",
     )
     assert not result.empty
     assert {
         "sector_key",
         "effective_duration_years",
+        "effective_duration_status",
         "bill_share",
         "short_share_le_1y",
         "level_evidence_tier",
@@ -243,11 +262,14 @@ def test_effective_maturity_panel_from_toy_pipeline_inputs():
         "bank_constraint_dataset",
         "bank_constraint_raw_file",
         "factor_exposure_kr_10y",
+        "point_estimate_origin",
+        "interval_origin",
     }.issubset(result.columns)
-    assert result["effective_duration_years"].nunique() > 1
+    assert result["effective_duration_years"].isna().all()
+    assert result["effective_duration_status"].eq("not_separately_estimated").all()
     assert result["bill_share"].nunique() > 1
-    assert (result["effective_duration_years_lower"] <= result["effective_duration_years"]).all()
-    assert (result["effective_duration_years"] <= result["effective_duration_years_upper"]).all()
+    assert result["effective_duration_years_lower"].isna().all()
+    assert result["effective_duration_years_upper"].isna().all()
     assert (result["bill_share_lower"] <= result["bill_share"]).all()
     assert (result["bill_share"] <= result["bill_share_upper"]).all()
     assert (result["short_share_le_1y_lower"] <= result["short_share_le_1y"]).all()
@@ -308,6 +330,8 @@ def test_effective_maturity_panel_from_toy_pipeline_inputs():
     foreign = result[(result["sector_key"] == "foreigners_total") & (result["date"] == foreign_quarter)].iloc[0]
     residual = result[(result["sector_key"] == "domestic_nonbank_residual_broad") & (result["date"] == bank_quarter)].iloc[0]
     assert fed["maturity_evidence_tier"] == "B"
+    assert fed["anchor_type"] == "soma_calibration_context"
+    assert fed["point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     assert foreign["anchor_type"] == "shl_slt_anchor"
     assert bank["maturity_evidence_tier"] == "D"
     assert fed["uncertainty_support_source"] == "z1_bills_observed"
@@ -371,6 +395,7 @@ def test_fed_interval_calibration_replaces_heuristic_band_metadata():
         bench,
         factor_returns=factor_bench,
         settings=settings,
+        strict_duration=True,
     )
     summary = summarize_interval_calibration(calibration)
 
@@ -381,7 +406,8 @@ def test_fed_interval_calibration_replaces_heuristic_band_metadata():
         "bill_share_abs_error",
     }.issubset(calibration.columns)
     assert summary["status"] == "ok"
-    assert summary["metrics"]["effective_duration_years"]["half_width"] is not None
+    assert "effective_duration_years" not in summary["metrics"]
+    assert summary["metrics"]["zero_coupon_equivalent_years"]["half_width"] is not None
 
     result = estimate_effective_maturity_panel(
         sector_panel,
@@ -391,6 +417,7 @@ def test_fed_interval_calibration_replaces_heuristic_band_metadata():
         interval_calibration=calibration,
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
+        annotation_mode="full_coverage",
     )
     assert (result["uncertainty_band_method"] == "fed_interval_calibration_with_sector_support").all()
     assert (result["uncertainty_calibration_source"] == "fed_soma").all()
@@ -413,6 +440,7 @@ def test_fed_interval_calibration_replaces_heuristic_band_metadata():
     foreign = result[(result["sector_key"] == "foreigners_total") & (result["date"] == foreign_quarter)].iloc[0]
     residual = result[(result["sector_key"] == "domestic_nonbank_residual_broad") & (result["date"] == bank_quarter)].iloc[0]
     assert fed["uncertainty_band_type"] == "support_anchored_fed_band"
+    assert fed["interval_origin"] == "fed_soma_calibrated_uncertainty_band"
     assert fed["uncertainty_scale_multiplier"] == 1.0
     assert bank["uncertainty_scale_multiplier"] > fed["uncertainty_scale_multiplier"]
     assert bank["uncertainty_support_source"] == "bank_constraint_panel_direct"

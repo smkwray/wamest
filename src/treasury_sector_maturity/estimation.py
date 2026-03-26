@@ -346,14 +346,19 @@ def weights_to_summary_metrics(
     weights: pd.Series,
     maturity_years: dict[str, float] | pd.Series,
     duration_years: dict[str, float] | pd.Series | None = None,
+    strict_duration: bool = False,
 ) -> dict[str, float]:
     weights = weights.astype(float)
     maturities = pd.Series(maturity_years, dtype=float).reindex(weights.index)
 
+    duration_status = "not_separately_estimated"
     if duration_years is None:
-        durations = maturities.copy()
+        durations = None if strict_duration else maturities.copy()
+        if not strict_duration:
+            duration_status = "maturity_alias_legacy"
     else:
         durations = pd.Series(duration_years, dtype=float).reindex(weights.index)
+        duration_status = "estimated_from_duration_map"
 
     labels = pd.Index(weights.index.astype(str))
     tips_mask = labels.str.contains("tips", case=False, regex=False)
@@ -377,7 +382,10 @@ def weights_to_summary_metrics(
         "coupon_share": coupon_share,
         "tips_share": float(weights[tips_mask].sum()) if tips_mask.any() else 0.0,
         "frn_share": float(weights[frn_mask].sum()) if frn_mask.any() else 0.0,
-        "effective_duration_years": float((weights * durations).sum()),
+        "effective_duration_years": (
+            np.nan if durations is None else float((weights * durations).sum())
+        ),
+        "effective_duration_status": duration_status,
         "zero_coupon_equivalent_years": float((weights * maturities).sum()),
         "coupon_only_maturity_years": nonbill_equiv,
     }
@@ -406,6 +414,7 @@ def estimate_effective_maturity_panel(
     foreign_nowcast: pd.DataFrame | None = None,
     bank_constraints: pd.DataFrame | None = None,
     sector_config_path: str = "configs/sector_definitions.yaml",
+    annotation_mode: str = "default",
 ) -> pd.DataFrame:
     settings = settings or EstimationSettings()
     sector_panel = attach_revaluation_returns(sector_panel, group_col="sector_key")
@@ -476,7 +485,11 @@ def estimate_effective_maturity_panel(
 
         for _, wrow in weights_df.iterrows():
             weight_series = wrow[asset_cols]
-            metrics = weights_to_summary_metrics(weight_series, maturity_years=maturity_years)
+            metrics = weights_to_summary_metrics(
+                weight_series,
+                maturity_years=maturity_years,
+                strict_duration=(annotation_mode == "full_coverage"),
+            )
             rows.append(
                 {
                     "date": pd.Timestamp(wrow["date"]),
@@ -499,6 +512,7 @@ def estimate_effective_maturity_panel(
                 "tips_share",
                 "frn_share",
                 "effective_duration_years",
+                "effective_duration_status",
                 "zero_coupon_equivalent_years",
                 "coupon_only_maturity_years",
                 "method",
@@ -514,6 +528,7 @@ def estimate_effective_maturity_panel(
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
         sector_config_path=sector_config_path,
+        annotation_mode=annotation_mode,
     )
 
 

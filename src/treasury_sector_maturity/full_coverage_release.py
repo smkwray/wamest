@@ -62,6 +62,11 @@ ESTIMATE_METADATA_COLUMNS = [
     "anchor_type",
     "concept_match",
     "coverage_ratio",
+    "coverage_measurement_basis",
+    "coverage_label",
+    "effective_duration_status",
+    "point_estimate_origin",
+    "interval_origin",
 ]
 
 
@@ -225,6 +230,7 @@ def build_full_coverage_release(
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
         sector_config_path=str(sector_defs),
+        annotation_mode="full_coverage",
     )
     estimated = _merge_promoted_release_estimates(
         estimated=estimated,
@@ -297,6 +303,13 @@ def build_full_coverage_release(
         "anchor_type",
         "concept_match",
         "coverage_ratio",
+        "coverage_measurement_basis",
+        "coverage_label",
+        "level_source_provider_used",
+        "level_supplemented_from_fred",
+        "effective_duration_status",
+        "point_estimate_origin",
+        "interval_origin",
         "bill_share",
         "effective_duration_years",
         "zero_coupon_equivalent_years",
@@ -504,6 +517,8 @@ def _build_sector_panel(
 ) -> _BuiltSectorInputs:
     long_df = parse_z1_ddp_csv(z1_path)
     catalog = load_series_catalog(series_catalog)
+    sector_defs_data = load_yaml(sector_defs).get("sectors") or {}
+    supplement_summary: dict[str, Any] = {}
     if supplement_missing_z1_levels_from_fred:
         long_df, supplement_summary = _supplement_missing_z1_levels_from_fred(
             long_df=long_df,
@@ -521,6 +536,11 @@ def _build_sector_panel(
         sector_panel.rename(columns={"sector_key": "series_key"}).copy()
     ).rename(columns={"series_key": "sector_key"})
     sector_panel = attach_revaluation_returns(sector_panel, group_col="sector_key")
+    sector_panel = _attach_level_source_provenance(
+        sector_panel,
+        sector_definitions=sector_defs_data,
+        supplement_summary=supplement_summary,
+    )
     write_table(sector_panel, sector_out)
     intermediate_artifacts["z1_sector_panel"] = str(sector_out)
     return _BuiltSectorInputs(long_df=long_df, series_panel=series_panel, sector_panel=sector_panel, catalog=catalog)
@@ -543,6 +563,7 @@ def _supplement_missing_z1_levels_from_fred(
     supplement_frames: list[pd.DataFrame] = []
     supplemented_sector_keys: list[str] = []
     supplemented_series_codes: list[str] = []
+    supplemented_level_rows: list[dict[str, Any]] = []
 
     for sector_key in required_atomic:
         level_series_key = _as_text((sector_defs.get(sector_key) or {}).get("level_series"))
@@ -567,6 +588,16 @@ def _supplement_missing_z1_levels_from_fred(
         supplement_frames.append(supplement)
         supplemented_sector_keys.append(sector_key)
         supplemented_series_codes.append(series_code)
+        supplemented_level_rows.extend(
+            {
+                "sector_key": sector_key,
+                "series_code": series_code,
+                "date": pd.Timestamp(date).normalize(),
+                "level_source_provider_used": "fred_level_supplement",
+                "level_supplemented_from_fred": True,
+            }
+            for date in supplement["date"].dropna().unique()
+        )
         available_codes.add(series_code)
 
     if supplement_frames:
@@ -579,7 +610,73 @@ def _supplement_missing_z1_levels_from_fred(
         "supplemented_sector_keys": supplemented_sector_keys,
         "supplemented_series_codes": supplemented_series_codes,
         "supplemented_series_count": len(supplemented_series_codes),
+        "supplemented_level_rows": [
+            {
+                "sector_key": item["sector_key"],
+                "series_code": item["series_code"],
+                "date": pd.Timestamp(item["date"]).date().isoformat(),
+                "level_source_provider_used": item["level_source_provider_used"],
+                "level_supplemented_from_fred": bool(item["level_supplemented_from_fred"]),
+            }
+            for item in supplemented_level_rows
+        ],
     }
+
+
+def _attach_level_source_provenance(
+    sector_panel: pd.DataFrame,
+    *,
+    sector_definitions: dict[str, Any],
+    supplement_summary: dict[str, Any] | None,
+) -> pd.DataFrame:
+    out = sector_panel.copy()
+    out["date"] = pd.to_datetime(out.get("date"), errors="coerce")
+    out["level_source_provider_used"] = pd.NA
+    out["level_supplemented_from_fred"] = False
+
+    default_provider_map: dict[str, str] = {}
+    for sector_key, raw_spec in sector_definitions.items():
+        spec = dict(raw_spec or {})
+        method_priority = list(spec.get("method_priority") or [])
+        primary = str(method_priority[0]).strip() if method_priority else ""
+        if spec.get("formula_level"):
+            default_provider_map[str(sector_key)] = "computed_identity"
+        elif primary == "computed_series_proxy":
+            default_provider_map[str(sector_key)] = "computed_proxy"
+        elif spec.get("level_series"):
+            default_provider_map[str(sector_key)] = "fed_z1"
+
+    if default_provider_map:
+        default_mask = out["level"].notna() & out["sector_key"].astype(str).isin(default_provider_map)
+        out.loc[default_mask, "level_source_provider_used"] = out.loc[default_mask, "sector_key"].astype(str).map(default_provider_map)
+
+    rows = list((supplement_summary or {}).get("supplemented_level_rows") or [])
+    if not rows:
+        return out
+
+    supplement_df = pd.DataFrame(rows)
+    supplement_df["date"] = pd.to_datetime(supplement_df.get("date"), errors="coerce")
+    supplement_df["sector_key"] = supplement_df["sector_key"].astype(str)
+    supplement_df["level_supplemented_from_fred"] = supplement_df["level_supplemented_from_fred"].fillna(False).astype(bool)
+    supplement_df = supplement_df.drop_duplicates(["date", "sector_key"])
+    out = out.merge(
+        supplement_df[["date", "sector_key", "level_source_provider_used", "level_supplemented_from_fred"]].rename(
+            columns={
+                "level_source_provider_used": "_supplement_level_source_provider_used",
+                "level_supplemented_from_fred": "_supplement_level_supplemented_from_fred",
+            }
+        ),
+        on=["date", "sector_key"],
+        how="left",
+    )
+    supplement_mask = out["_supplement_level_supplemented_from_fred"].fillna(False).astype(bool)
+    out.loc[supplement_mask, "level_source_provider_used"] = out.loc[supplement_mask, "_supplement_level_source_provider_used"]
+    out.loc[supplement_mask, "level_supplemented_from_fred"] = True
+    out.drop(
+        columns=["_supplement_level_source_provider_used", "_supplement_level_supplemented_from_fred"],
+        inplace=True,
+    )
+    return out
 
 
 def _build_benchmark_blocks(
@@ -679,6 +776,7 @@ def _build_fed_calibration(
         benchmark,
         factor_returns=None,
         settings=settings,
+        strict_duration=True,
     )
     interval_path = resolve_fed_calibration_scope("full")["interval_calibration_out"]
     write_table(interval_calibration, interval_path)
@@ -741,6 +839,7 @@ def _merge_promoted_release_estimates(
         foreign_nowcast=foreign_nowcast,
         bank_constraints=bank_constraints,
         sector_config_path=str(sector_defs_path),
+        annotation_mode="full_coverage",
     )
     if promoted.empty:
         return out
@@ -884,10 +983,13 @@ def _resolve_latest_snapshot_quarter(sector_panel: pd.DataFrame, required_atomic
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     subset = frame[
         frame["sector_key"].isin(required_atomic) & frame["level"].notna()
-    ]["date"].dropna()
+    ][["sector_key", "date"]].dropna()
     if subset.empty:
         return None
-    return pd.Timestamp(subset.max()).normalize()
+    per_sector_latest = subset.groupby("sector_key", sort=False)["date"].max()
+    if per_sector_latest.empty:
+        return None
+    return pd.Timestamp(per_sector_latest.min()).normalize()
 
 
 def _latest_required_sector_keys(
@@ -899,12 +1001,11 @@ def _latest_required_sector_keys(
         return set()
     frame = sector_panel.copy()
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
-    latest_rows = frame[
+    covered = frame[
         frame["sector_key"].isin(required_atomic)
         & frame["level"].notna()
-        & frame["date"].eq(latest_quarter)
-    ]
-    return set(latest_rows["sector_key"].dropna().astype(str))
+    ]["sector_key"].dropna().astype(str).unique().tolist()
+    return set(covered)
 
 
 def _build_release_summary(
@@ -1131,6 +1232,10 @@ def _build_required_sector_inventory(
                 "currently_window_promoted": bool(canonical_rows["release_window_override"].fillna(False).any()) if not canonical_rows.empty and "release_window_override" in canonical_rows.columns else False,
                 "current_estimand_class": current_estimand_class,
                 "current_estimator_family": current_estimator_family,
+                "current_level_source_provider_used": _single_or_mixed(canonical_rows.get("level_source_provider_used")),
+                "current_level_supplemented_from_fred": bool(canonical_rows.get("level_supplemented_from_fred", pd.Series(dtype=bool)).fillna(False).any()) if not canonical_rows.empty else False,
+                "current_point_estimate_origin": _single_or_mixed(canonical_rows.get("point_estimate_origin")),
+                "current_interval_origin": _single_or_mixed(canonical_rows.get("interval_origin")),
             }
         )
 
@@ -1491,10 +1596,16 @@ def _apply_history_preserving_backfill(frame: pd.DataFrame) -> pd.DataFrame:
     for _, sub in out.groupby("sector_key", sort=False):
         sector = sub.copy()
         original_has_estimate = sector[available_estimate_columns].notna().any(axis=1)
-        for column in fill_columns:
-            sector[column] = sector[column].ffill().bfill()
+        if not original_has_estimate.any():
+            grouped.append(sector)
+            continue
+
+        leading_gap_mask = original_has_estimate.cumsum().eq(0) & ~original_has_estimate
+        if leading_gap_mask.any():
+            for column in fill_columns:
+                sector.loc[leading_gap_mask, column] = sector[column].bfill().loc[leading_gap_mask]
         filled_has_estimate = sector[available_estimate_columns].notna().any(axis=1)
-        fallback_rows = (~original_has_estimate) & filled_has_estimate
+        fallback_rows = leading_gap_mask & filled_has_estimate
         if fallback_rows.any():
             sector.loc[fallback_rows, "history_preserving_backfill"] = True
             if "high_confidence_flag" in sector.columns:
@@ -1506,6 +1617,17 @@ def _apply_history_preserving_backfill(frame: pd.DataFrame) -> pd.DataFrame:
         grouped.append(sector)
 
     return _sort_release_frame(pd.concat(grouped, ignore_index=True, sort=False))
+
+
+def _single_or_mixed(series: pd.Series | None) -> str | None:
+    if series is None or len(series) == 0:
+        return None
+    values = pd.Series(series).dropna().astype(str).unique().tolist()
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    return "mixed"
 
 
 def _downgrade_evidence_tier(value: Any) -> str | Any:
@@ -1675,7 +1797,7 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Artifact: `{required_inventory_path}`",
-                "Inventory tracks source-code availability, method priority, bills-series availability, history span, and current backfill/promotion usage for every required atomic sector.",
+                "Inventory tracks source-code availability, method priority, bills-series availability, history span, current backfill/promotion usage, and current provenance fields for every required atomic sector.",
             ]
         ),
         "",
@@ -1694,6 +1816,10 @@ def _render_release_report(
             "revaluation_rows_available",
             "history_preserving_backfill_rows",
             "release_window_override_rows",
+            "current_level_source_provider_used",
+            "current_level_supplemented_from_fred",
+            "current_point_estimate_origin",
+            "current_interval_origin",
         ]),
         "",
         "## History-Preserving Backfill",
