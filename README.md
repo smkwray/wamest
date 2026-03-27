@@ -216,7 +216,8 @@ The full-coverage release path:
 - allows ragged histories instead of forcing a shared start date
 - uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
 - marks leading warmup carry rows with `history_preserving_backfill`
-- writes a `required_sector_inventory.csv` artifact covering method priority, bills-series availability, history span, and current backfill/promotion usage
+- exports basis fields, direct composition metrics, and interval bands alongside the headline maturity estimates
+- writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, and latest provenance fields
 - publishes reconciliation diagnostics for formula and parent/child rollups
 - treats the high-confidence subset as a filter, not as the scope boundary
 

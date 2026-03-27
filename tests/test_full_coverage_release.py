@@ -84,6 +84,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "high_confidence_flag" in canonical.columns
     assert "history_preserving_backfill" in canonical.columns
     assert "release_window_override" in canonical.columns
+    assert "level_measurement_basis" in canonical.columns
+    assert "maturity_measurement_basis" in canonical.columns
     assert "coverage_measurement_basis" in canonical.columns
     assert "coverage_label" in canonical.columns
     assert "level_source_provider_used" in canonical.columns
@@ -91,6 +93,19 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "effective_duration_status" in canonical.columns
     assert "point_estimate_origin" in canonical.columns
     assert "interval_origin" in canonical.columns
+    assert "short_share_le_1y" in canonical.columns
+    assert "coupon_share" in canonical.columns
+    assert "tips_share" in canonical.columns
+    assert "frn_share" in canonical.columns
+    assert "coupon_only_maturity_years" in canonical.columns
+    assert "bill_share_lower" in canonical.columns
+    assert "bill_share_upper" in canonical.columns
+    assert "short_share_le_1y_lower" in canonical.columns
+    assert "short_share_le_1y_upper" in canonical.columns
+    assert "effective_duration_years_lower" in canonical.columns
+    assert "effective_duration_years_upper" in canonical.columns
+    assert "zero_coupon_equivalent_years_lower" in canonical.columns
+    assert "zero_coupon_equivalent_years_upper" in canonical.columns
     assert canonical["node_type"].eq("atomic").all()
     assert "node_type" in reconciliation.columns
     assert reconciliation["node_type"].ne("atomic").all()
@@ -180,6 +195,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert summary["release_summary"]["high_confidence_row_count"] == int(len(high_confidence))
     assert summary["release_summary"]["reconciliation_row_count"] == int(len(reconciliation))
     assert summary["release_summary"]["required_sector_inventory_row_count"] == int(len(inventory))
+    assert "requested_end_date" in summary["release_summary"]
+    assert "resolved_latest_snapshot_date" in summary["release_summary"]
     expected_required_covered = len(set(canonical["sector_key"].astype(str)) & required_atomic)
     assert summary["coverage_completeness"]["required_atomic_covered"] == expected_required_covered
     assert summary["coverage_completeness"]["missing_required_estimate_rows"] == 0
@@ -187,6 +204,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert summary["source_series_audit"]["required_sector_count"] == int(len(inventory))
     assert summary["source_series_audit"]["source_level_status_counts"]["present"] > 0
     assert summary["source_series_audit"]["source_level_absent_count"] > 0
+    assert "post_supplement_level_status_counts" in summary["source_series_audit"]
     assert "transactions_only_with_level_fred_mapping_count" in summary["source_series_audit"]
     assert summary["latest_snapshot_summary"]["latest_common_quarter"] == latest["date"].iloc[0].date().isoformat()
     assert summary["history_preserving_backfill"]["history_preserving_backfill_rows"] > 0
@@ -215,16 +233,18 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         "source_level_code_present",
         "source_transactions_code_present",
         "source_level_status",
+        "post_supplement_level_code_present",
+        "post_supplement_level_status",
         "same_base_source_codes",
-        "current_level_source_provider_used",
-        "current_level_supplemented_from_fred",
-        "current_point_estimate_origin",
-        "current_interval_origin",
+        "latest_level_source_provider_used",
+        "latest_level_supplemented_from_fred",
+        "latest_point_estimate_origin",
+        "latest_interval_origin",
     }.issubset(inventory.columns)
     fed_inventory = inventory[inventory["sector_key"] == "fed"].iloc[0]
     assert fed_inventory["source_level_status"] == "present"
     assert isinstance(fed_inventory["level_fred_id"], str) and fed_inventory["level_fred_id"]
-    assert fed_inventory["current_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
+    assert fed_inventory["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     life_inventory = inventory[inventory["sector_key"] == "life_insurers"].iloc[0]
     assert life_inventory["source_level_status"] == "absent"
     promoted_inventory = inventory[inventory["release_window_override_rows"] > 0]
@@ -360,7 +380,37 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     catalog = load_series_catalog(FULL_CATALOG)
     long_df = parse_z1_ddp_csv(TOY_Z1)
     date = pd.Timestamp("2025-12-31")
-    supplemented = {"fed", "foreigners_total", "bank_us_chartered"}
+    observed_codes = set(long_df["series_code"].dropna().astype(str))
+    supplemented: set[str] = set()
+    supplemented_long_df = long_df.copy()
+    for sector_key in required_atomic:
+        level_series_key = sector_defs.get(sector_key, {}).get("level_series")
+        if not level_series_key:
+            continue
+        spec = catalog.get(level_series_key)
+        if spec is None:
+            continue
+        level_code = getattr(spec, "level", None)
+        fred_id = (getattr(spec, "fred_ids", None) or {}).get("level")
+        if not level_code or not fred_id or str(level_code) in observed_codes:
+            continue
+        supplemented.add(sector_key)
+        supplemented_long_df = pd.concat(
+            [
+                supplemented_long_df,
+                pd.DataFrame(
+                    {
+                        "series_code": [str(level_code)],
+                        "date": [date],
+                        "value": [float(200 + len(supplemented))],
+                    }
+                ),
+            ],
+            ignore_index=True,
+        )
+        if len(supplemented) >= 3:
+            break
+    assert supplemented
 
     synthetic_sector_rows = []
     synthetic_estimated_rows = []
@@ -428,7 +478,8 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
 
     def fake_build_sector_panel(**kwargs):
         return module._BuiltSectorInputs(
-            long_df=long_df,
+            raw_long_df=long_df,
+            long_df=supplemented_long_df,
             series_panel=pd.DataFrame(),
             sector_panel=synthetic_sector_panel.copy(),
             catalog=catalog,
@@ -475,7 +526,167 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     assert supplemented_rows["level_supplemented_from_fred"].all()
     assert set(supplemented_rows["level_source_provider_used"]) == {"fred_level_supplement"}
     supplemented_inventory = inventory[inventory["sector_key"].isin(supplemented)]
-    assert supplemented_inventory["current_level_supplemented_from_fred"].all()
+    assert not supplemented_inventory["source_level_code_present"].any()
+    assert supplemented_inventory["post_supplement_level_code_present"].all()
+    assert supplemented_inventory["latest_level_supplemented_from_fred"].all()
+    assert summary["source_series_audit"]["post_supplement_level_present_count"] > summary["source_series_audit"]["source_level_present_count"]
+
+
+def test_build_fed_calibration_passes_factor_returns_through(monkeypatch, tmp_path):
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+
+    captured: dict[str, pd.DataFrame | None] = {}
+
+    monkeypatch.setattr(module, "load_h15_curve_file", lambda *args, **kwargs: pd.DataFrame({"date": [pd.Timestamp("2025-12-31")], "rate": [0.01]}))
+    monkeypatch.setattr(module, "read_soma_holdings", lambda path: pd.DataFrame({"cusip": []}))
+    monkeypatch.setattr(
+        module,
+        "summarize_soma_quarterly",
+        lambda soma, curve_df: pd.DataFrame(
+            {
+                "date": [pd.Timestamp("2025-12-31")],
+                "approx_modified_duration_years": [5.0],
+                "exact_wam_years": [6.0],
+                "bill_share": [0.2],
+            }
+        ),
+    )
+    monkeypatch.setattr(module, "write_table", lambda frame, path: None)
+    monkeypatch.setattr(module, "dump_json", lambda payload, path: None)
+    monkeypatch.setattr(
+        module,
+        "resolve_fed_calibration_scope",
+        lambda scope: {
+            "exact_out": tmp_path / "exact.csv",
+            "interval_calibration_out": tmp_path / "interval.csv",
+            "summary_out": tmp_path / "summary.json",
+        },
+    )
+
+    def fake_calibrate(*args, factor_returns=None, **kwargs):
+        captured["summary_factor_returns"] = factor_returns
+        return {"status": "ok"}
+
+    def fake_interval(*args, factor_returns=None, **kwargs):
+        captured["interval_factor_returns"] = factor_returns
+        return pd.DataFrame({"date": [pd.Timestamp("2025-12-31")]})
+
+    monkeypatch.setattr(module, "calibrate_fed_revaluation_mapping", fake_calibrate)
+    monkeypatch.setattr(module, "build_fed_interval_calibration", fake_interval)
+    monkeypatch.setattr(module, "summarize_interval_calibration", lambda interval_calibration, settings=None: {"status": "ok"})
+
+    factor_benchmark = pd.DataFrame({"date": [pd.Timestamp("2025-12-31")], "kr_5y": [0.01]})
+    summary, interval_calibration = module._build_fed_calibration(
+        sector_panel=pd.DataFrame(
+            {
+                "sector_key": ["fed"],
+                "date": [pd.Timestamp("2025-12-31")],
+                "revaluation_return": [0.001],
+            }
+        ),
+        benchmark=pd.DataFrame({"date": [pd.Timestamp("2025-12-31")], "1y": [0.0]}),
+        factor_benchmark=factor_benchmark,
+        settings=module.EstimationSettings(),
+        interval_cfg={},
+        source_provider="fed",
+        series_config="configs/h15_series.yaml",
+        h15_file=TOY_H15,
+        soma_file=TOY_SOMA,
+        source_artifacts={},
+        provider_summary={},
+        intermediate_artifacts={},
+    )
+
+    assert summary["status"] == "ok"
+    assert not interval_calibration.empty
+    pd.testing.assert_frame_equal(captured["summary_factor_returns"], factor_benchmark)
+    pd.testing.assert_frame_equal(captured["interval_factor_returns"], factor_benchmark)
+
+
+def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    inventory_builder = getattr(module, "_build_required_sector_inventory")
+
+    coverage_registry = module.load_coverage_registry(FULL_CATALOG.parent / "coverage_registry.yaml")
+    sector_defs = module.load_yaml(FULL_SECTOR_DEFS).get("sectors") or {}
+    catalog = load_series_catalog(FULL_CATALOG)
+
+    canonical_atomic = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31"]),
+            "sector_key": ["fed", "fed"],
+            "estimand_class": ["old_estimand", "new_estimand"],
+            "estimator_family": ["old_family", "new_family"],
+            "level_source_provider_used": ["fed_z1", "fred_level_supplement"],
+            "level_supplemented_from_fred": [False, True],
+            "point_estimate_origin": ["rolling_benchmark_weights", "rolling_benchmark_weights_plus_factors"],
+            "interval_origin": ["old_interval", "new_interval"],
+            "history_preserving_backfill": [False, False],
+            "release_window_override": [False, False],
+        }
+    )
+    sector_panel = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31"]),
+            "sector_key": ["fed", "fed"],
+            "level": [1.0, 2.0],
+            "transactions": [0.1, 0.2],
+            "revaluation": [0.01, 0.02],
+            "bills_level": [0.3, 0.4],
+        }
+    )
+
+    inventory = inventory_builder(
+        canonical_atomic=canonical_atomic,
+        sector_panel=sector_panel,
+        sector_definitions=sector_defs,
+        coverage_registry=coverage_registry,
+        catalog=catalog,
+        raw_long_df=pd.DataFrame(columns=["series_code", "date", "value"]),
+        long_df=pd.DataFrame(columns=["series_code", "date", "value"]),
+    )
+
+    fed_row = inventory[inventory["sector_key"] == "fed"].iloc[0]
+    assert fed_row["latest_estimand_class"] == "new_estimand"
+    assert fed_row["latest_estimator_family"] == "new_family"
+    assert fed_row["latest_level_source_provider_used"] == "fred_level_supplement"
+    assert bool(fed_row["latest_level_supplemented_from_fred"]) is True
+    assert fed_row["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
+    assert fed_row["latest_interval_origin"] == "new_interval"
+
+
+def test_full_coverage_release_summary_distinguishes_requested_end_date_from_resolved_snapshot(tmp_path):
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    builder = getattr(module, "build_full_coverage_release")
+
+    out_dir = tmp_path / "full_coverage_release_requested_vs_resolved"
+    builder(
+        out_dir=out_dir,
+        source_provider="fed",
+        coverage_scope="full",
+        end_date="2026-12-31",
+        z1_file=TOY_Z1,
+        h15_file=TOY_H15,
+        curve_file=[f"tips_real_yield_constant_maturity={TOY_TIPS}"],
+        soma_file=TOY_SOMA,
+        foreign_shl_file=TOY_SHL,
+        foreign_slt_file=TOY_SLT,
+        bank_constraint_file=TOY_BANK_CONSTRAINTS,
+        series_catalog=FULL_CATALOG,
+        sector_defs=FULL_SECTOR_DEFS,
+        model_config="configs/model_defaults.yaml",
+        series_config="configs/h15_series.yaml",
+        bank_constraints_config="configs/bank_constraints.yaml",
+        summary_json_out=out_dir / "full_coverage_summary.json",
+    )
+
+    summary = json.loads((out_dir / "full_coverage_summary.json").read_text(encoding="utf-8"))
+    report = (out_dir / "full_coverage_report.md").read_text(encoding="utf-8")
+
+    assert summary["release_summary"]["requested_end_date"] == "2026-12-31"
+    assert summary["release_summary"]["resolved_latest_snapshot_date"] == "2025-12-31"
+    assert "Requested end date: `2026-12-31`" in report
+    assert "Resolved latest snapshot date: `2025-12-31`" in report
 
 
 def test_full_coverage_release_summary_tracks_required_sector_history_spans(tmp_path):

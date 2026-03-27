@@ -42,7 +42,7 @@ Rules:
 - includes weak sectors and partially identified sectors
 - allows ragged histories when some sectors start later than others
 - excludes non-atomic reconciliation or roll-up nodes
-- retains the same core maturity fields used in the preview path, plus the richer coverage metadata
+- retains the core maturity fields used in the preview path, and extends them with direct composition metrics, calibrated interval bands, and explicit measurement-basis fields
 - includes `history_preserving_backfill` so leading warmup rows filled from the nearest available sector estimate remain explicit and easy to filter
 - may include `release_window_override` rows where selected stronger sectors were estimated with a shorter window before any carry-style backfill was used
 
@@ -93,13 +93,14 @@ Rules:
 - contains one row per required atomic sector
 - records the configured level / transactions / revaluation / bills source codes and any configured `fred_ids` fallbacks for each required sector where applicable
 - records whether those configured source codes are present in the parsed Z.1 source file used for the release
+- records whether the configured level code becomes available after the optional FRED level supplement used by the live full-coverage path
 - records a compact `source_level_status` classification such as `present`, `transactions_only`, `same_base_other_only`, `absent`, or `computed_proxy`
 - records any same-base source codes actually seen in the parsed Z.1 source file so catalog mismatches can be audited without re-scanning the raw release
 - records the configured method-priority stack from `configs/sector_definitions_full.yaml`
 - records whether a sector has a direct `bills_series`
 - records whether the sector is explicitly eligible for release-window promotion in `configs/coverage_registry.yaml`
-- records the feasible history span, underlying level/transactions/revaluation row availability, and current `history_preserving_backfill` / `release_window_override` usage from the emitted canonical artifact
-- records current provenance fields such as point-estimate origin, uncertainty-band origin, and whether the current level path was supplemented from FRED
+- records the feasible history span, underlying level/transactions/revaluation row availability, and emitted `history_preserving_backfill` / `release_window_override` usage from the canonical artifact
+- records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest emitted level path was supplemented from FRED
 
 ## Validation semantics
 
@@ -118,7 +119,7 @@ The full-coverage release should validate the following:
 - release metadata and schema version
 - per-sector history spans and inclusion status
 - required-sector completeness results
-- source-series audit results, including counts of sectors whose configured level code is present versus transactions-only or absent in the parsed source file, plus the subset of transactions-only sectors that already have a configured level `fred_ids` mapping
+- source-series audit results, including raw parsed-Z.1 counts for sectors whose configured level code is present versus transactions-only or absent, plus post-supplement level-availability counts and the subset of transactions-only sectors that already have a configured level `fred_ids` mapping
 - required-sector inventory artifact path and row count
 - weakest-sector summary keyed by evidence tier, concept risk, and estimand class
 - high-confidence subset counts and sector list

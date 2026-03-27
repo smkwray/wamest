@@ -52,6 +52,23 @@ PRIMARY_ESTIMATE_COLUMNS = [
     "effective_duration_years",
     "zero_coupon_equivalent_years",
 ]
+SECONDARY_ESTIMATE_COLUMNS = [
+    "short_share_le_1y",
+    "coupon_share",
+    "tips_share",
+    "frn_share",
+    "coupon_only_maturity_years",
+]
+INTERVAL_ESTIMATE_COLUMNS = [
+    "bill_share_lower",
+    "bill_share_upper",
+    "short_share_le_1y_lower",
+    "short_share_le_1y_upper",
+    "effective_duration_years_lower",
+    "effective_duration_years_upper",
+    "zero_coupon_equivalent_years_lower",
+    "zero_coupon_equivalent_years_upper",
+]
 ESTIMATE_METADATA_COLUMNS = [
     "estimand_class",
     "estimator_family",
@@ -59,6 +76,8 @@ ESTIMATE_METADATA_COLUMNS = [
     "high_confidence_flag",
     "level_evidence_tier",
     "maturity_evidence_tier",
+    "level_measurement_basis",
+    "maturity_measurement_basis",
     "anchor_type",
     "concept_match",
     "coverage_ratio",
@@ -84,6 +103,7 @@ class FullCoverageReleaseArtifacts:
 
 @dataclass(frozen=True)
 class _BuiltSectorInputs:
+    raw_long_df: pd.DataFrame
     long_df: pd.DataFrame
     series_panel: pd.DataFrame
     sector_panel: pd.DataFrame
@@ -189,6 +209,7 @@ def build_full_coverage_release(
     fed_summary, interval_calibration = _build_fed_calibration(
         sector_panel=sector_panel,
         benchmark=benchmark,
+        factor_benchmark=factor_benchmark,
         settings=settings,
         interval_cfg=interval_cfg,
         source_provider=source_provider,
@@ -300,6 +321,8 @@ def build_full_coverage_release(
         "release_window_override_quarters",
         "level_evidence_tier",
         "maturity_evidence_tier",
+        "level_measurement_basis",
+        "maturity_measurement_basis",
         "anchor_type",
         "concept_match",
         "coverage_ratio",
@@ -311,8 +334,21 @@ def build_full_coverage_release(
         "point_estimate_origin",
         "interval_origin",
         "bill_share",
+        "short_share_le_1y",
+        "coupon_share",
+        "tips_share",
+        "frn_share",
         "effective_duration_years",
         "zero_coupon_equivalent_years",
+        "coupon_only_maturity_years",
+        "bill_share_lower",
+        "bill_share_upper",
+        "short_share_le_1y_lower",
+        "short_share_le_1y_upper",
+        "effective_duration_years_lower",
+        "effective_duration_years_upper",
+        "zero_coupon_equivalent_years_lower",
+        "zero_coupon_equivalent_years_upper",
     ]
     canonical_export = _project_columns(canonical_atomic, export_columns)
     latest_export = _project_columns(latest_atomic, export_columns)
@@ -324,6 +360,7 @@ def build_full_coverage_release(
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
         catalog=sector_inputs.catalog,
+        raw_long_df=sector_inputs.raw_long_df,
         long_df=sector_inputs.long_df,
     )
     source_series_audit = _build_source_series_audit(required_sector_inventory)
@@ -338,7 +375,8 @@ def build_full_coverage_release(
         canonical_atomic=canonical_atomic,
         latest_atomic=latest_atomic,
         high_confidence=high_confidence,
-        report_date=end_date,
+        requested_end_date=end_date,
+        resolved_latest_snapshot_date=None if latest_quarter is None else pd.Timestamp(latest_quarter).date().isoformat(),
         quarters=quarters,
         coverage_scope=coverage_scope,
         source_provider=source_provider,
@@ -515,7 +553,8 @@ def _build_sector_panel(
     intermediate_artifacts: dict[str, Any],
     supplement_missing_z1_levels_from_fred: bool,
 ) -> _BuiltSectorInputs:
-    long_df = parse_z1_ddp_csv(z1_path)
+    raw_long_df = parse_z1_ddp_csv(z1_path)
+    long_df = raw_long_df.copy()
     catalog = load_series_catalog(series_catalog)
     sector_defs_data = load_yaml(sector_defs).get("sectors") or {}
     supplement_summary: dict[str, Any] = {}
@@ -543,7 +582,13 @@ def _build_sector_panel(
     )
     write_table(sector_panel, sector_out)
     intermediate_artifacts["z1_sector_panel"] = str(sector_out)
-    return _BuiltSectorInputs(long_df=long_df, series_panel=series_panel, sector_panel=sector_panel, catalog=catalog)
+    return _BuiltSectorInputs(
+        raw_long_df=raw_long_df,
+        long_df=long_df,
+        series_panel=series_panel,
+        sector_panel=sector_panel,
+        catalog=catalog,
+    )
 
 
 def _supplement_missing_z1_levels_from_fred(
@@ -707,6 +752,7 @@ def _build_fed_calibration(
     *,
     sector_panel: pd.DataFrame,
     benchmark: pd.DataFrame,
+    factor_benchmark: pd.DataFrame | None,
     settings: EstimationSettings,
     interval_cfg: dict[str, Any],
     source_provider: str,
@@ -765,7 +811,7 @@ def _build_fed_calibration(
         fed_panel,
         exact_metrics,
         benchmark,
-        factor_returns=None,
+        factor_returns=factor_benchmark,
         smoothness_penalty=settings.smoothness_penalty,
         ridge_penalty=settings.ridge_penalty,
         factor_ridge_penalty=settings.factor_ridge_penalty,
@@ -774,7 +820,7 @@ def _build_fed_calibration(
         fed_panel,
         exact_metrics,
         benchmark,
-        factor_returns=None,
+        factor_returns=factor_benchmark,
         settings=settings,
         strict_duration=True,
     )
@@ -1013,7 +1059,8 @@ def _build_release_summary(
     canonical_atomic: pd.DataFrame,
     latest_atomic: pd.DataFrame,
     high_confidence: pd.DataFrame,
-    report_date: str | None,
+    requested_end_date: str | None,
+    resolved_latest_snapshot_date: str | None,
     quarters: int | None,
     coverage_scope: str,
     source_provider: str,
@@ -1029,7 +1076,8 @@ def _build_release_summary(
     return {
         "coverage_scope": coverage_scope,
         "source_provider_requested": source_provider,
-        "report_date": report_date or (date_range[1] or ""),
+        "requested_end_date": requested_end_date or "",
+        "resolved_latest_snapshot_date": resolved_latest_snapshot_date or (date_range[1] or ""),
         "quarters": quarters,
         "canonical_row_count": int(len(canonical_atomic)),
         "latest_snapshot_row_count": int(len(latest_atomic)),
@@ -1141,6 +1189,7 @@ def _build_required_sector_inventory(
     sector_definitions: dict[str, Any],
     coverage_registry: dict[str, Any],
     catalog: dict[str, Any],
+    raw_long_df: pd.DataFrame,
     long_df: pd.DataFrame,
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
@@ -1150,6 +1199,7 @@ def _build_required_sector_inventory(
     }
     sector_panel = sector_panel.copy()
     sector_panel["date"] = pd.to_datetime(sector_panel["date"], errors="coerce")
+    raw_available_codes = set(raw_long_df["series_code"].dropna().astype(str)) if "series_code" in raw_long_df.columns else set()
     available_codes = set(long_df["series_code"].dropna().astype(str)) if "series_code" in long_df.columns else set()
 
     for sector_key, node in sorted(coverage_registry.items()):
@@ -1169,11 +1219,12 @@ def _build_required_sector_inventory(
         revaluation_fred_id = _as_text((getattr(series_spec, "fred_ids", None) or {}).get("revaluation")) if series_spec is not None else None
         bills_source_code = _as_text(getattr(bills_spec, "level", None)) if bills_spec is not None else None
         bills_fred_id = _as_text((getattr(bills_spec, "fred_ids", None) or {}).get("level")) if bills_spec is not None else None
-        level_code_present = bool(level_source_code and level_source_code in available_codes)
-        transactions_code_present = bool(transactions_source_code and transactions_source_code in available_codes)
-        revaluation_code_present = bool(revaluation_source_code and revaluation_source_code in available_codes)
-        bills_code_present = bool(bills_source_code and bills_source_code in available_codes)
-        same_base_codes = _same_base_source_codes(available_codes, base_code)
+        level_code_present = bool(level_source_code and level_source_code in raw_available_codes)
+        transactions_code_present = bool(transactions_source_code and transactions_source_code in raw_available_codes)
+        revaluation_code_present = bool(revaluation_source_code and revaluation_source_code in raw_available_codes)
+        bills_code_present = bool(bills_source_code and bills_source_code in raw_available_codes)
+        post_supplement_level_code_present = bool(level_source_code and level_source_code in available_codes)
+        same_base_codes = _same_base_source_codes(raw_available_codes, base_code)
         sector_rows_all = sector_panel[
             sector_panel["sector_key"].astype(str).eq(sector_key)
         ].copy()
@@ -1181,12 +1232,20 @@ def _build_required_sector_inventory(
         canonical_rows = canonical_groups.get(sector_key, pd.DataFrame())
         date_start = None if history_rows.empty else pd.Timestamp(history_rows["date"].min()).date().isoformat()
         date_end = None if history_rows.empty else pd.Timestamp(history_rows["date"].max()).date().isoformat()
-        current_estimand_class = None
-        current_estimator_family = None
+        latest_estimand_class = None
+        latest_estimator_family = None
+        latest_level_source_provider_used = None
+        latest_level_supplemented_from_fred = False
+        latest_point_estimate_origin = None
+        latest_interval_origin = None
         if not canonical_rows.empty:
-            row0 = canonical_rows.iloc[0]
-            current_estimand_class = _as_text(row0.get("estimand_class"))
-            current_estimator_family = _as_text(row0.get("estimator_family"))
+            latest_row = canonical_rows.sort_values("date").iloc[-1]
+            latest_estimand_class = _as_text(latest_row.get("estimand_class"))
+            latest_estimator_family = _as_text(latest_row.get("estimator_family"))
+            latest_level_source_provider_used = _as_text(latest_row.get("level_source_provider_used"))
+            latest_level_supplemented_from_fred = bool(latest_row.get("level_supplemented_from_fred", False))
+            latest_point_estimate_origin = _as_text(latest_row.get("point_estimate_origin"))
+            latest_interval_origin = _as_text(latest_row.get("interval_origin"))
         rows.append(
             {
                 "sector_key": sector_key,
@@ -1210,10 +1269,18 @@ def _build_required_sector_inventory(
                 "source_transactions_code_present": transactions_code_present,
                 "source_revaluation_code_present": revaluation_code_present,
                 "source_bills_code_present": bills_code_present,
+                "post_supplement_level_code_present": post_supplement_level_code_present,
                 "source_level_status": _classify_source_level_status(
                     level_source_code=level_source_code,
                     transactions_source_code=transactions_source_code,
                     level_code_present=level_code_present,
+                    transactions_code_present=transactions_code_present,
+                    same_base_codes=same_base_codes,
+                ),
+                "post_supplement_level_status": _classify_source_level_status(
+                    level_source_code=level_source_code,
+                    transactions_source_code=transactions_source_code,
+                    level_code_present=post_supplement_level_code_present,
                     transactions_code_present=transactions_code_present,
                     same_base_codes=same_base_codes,
                 ),
@@ -1230,12 +1297,12 @@ def _build_required_sector_inventory(
                 "release_window_override_rows": int(canonical_rows["release_window_override"].fillna(False).sum()) if not canonical_rows.empty and "release_window_override" in canonical_rows.columns else 0,
                 "currently_backfilled": bool(canonical_rows["history_preserving_backfill"].fillna(False).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
                 "currently_window_promoted": bool(canonical_rows["release_window_override"].fillna(False).any()) if not canonical_rows.empty and "release_window_override" in canonical_rows.columns else False,
-                "current_estimand_class": current_estimand_class,
-                "current_estimator_family": current_estimator_family,
-                "current_level_source_provider_used": _single_or_mixed(canonical_rows.get("level_source_provider_used")),
-                "current_level_supplemented_from_fred": bool(canonical_rows.get("level_supplemented_from_fred", pd.Series(dtype=bool)).fillna(False).any()) if not canonical_rows.empty else False,
-                "current_point_estimate_origin": _single_or_mixed(canonical_rows.get("point_estimate_origin")),
-                "current_interval_origin": _single_or_mixed(canonical_rows.get("interval_origin")),
+                "latest_estimand_class": latest_estimand_class,
+                "latest_estimator_family": latest_estimator_family,
+                "latest_level_source_provider_used": latest_level_source_provider_used,
+                "latest_level_supplemented_from_fred": latest_level_supplemented_from_fred,
+                "latest_point_estimate_origin": latest_point_estimate_origin,
+                "latest_interval_origin": latest_interval_origin,
             }
         )
 
@@ -1269,22 +1336,31 @@ def _classify_source_level_status(
 
 def _build_source_series_audit(required_sector_inventory: pd.DataFrame) -> dict[str, Any]:
     inventory = required_sector_inventory.copy()
-    status_counts = {
+    raw_status_counts = {
         str(status): int(count)
         for status, count in inventory["source_level_status"].fillna("unknown").astype(str).value_counts().sort_index().items()
+    }
+    post_supplement_status_counts = {
+        str(status): int(count)
+        for status, count in inventory["post_supplement_level_status"].fillna("unknown").astype(str).value_counts().sort_index().items()
     }
     transactions_only = inventory[inventory["source_level_status"].astype(str).eq("transactions_only")]
     absent = inventory[inventory["source_level_status"].astype(str).eq("absent")]
     present = inventory[inventory["source_level_status"].astype(str).eq("present")]
+    post_supplement_present = inventory[inventory["post_supplement_level_status"].astype(str).eq("present")]
+    post_supplement_absent = inventory[inventory["post_supplement_level_status"].astype(str).eq("absent")]
     transactions_only_with_fred_mapping = transactions_only[
         transactions_only["level_fred_id"].notna() & transactions_only["level_fred_id"].astype(str).ne("")
     ]
     return {
         "required_sector_count": int(len(inventory)),
-        "source_level_status_counts": status_counts,
+        "source_level_status_counts": raw_status_counts,
         "source_level_present_count": int(len(present)),
         "source_level_transactions_only_count": int(len(transactions_only)),
         "source_level_absent_count": int(len(absent)),
+        "post_supplement_level_status_counts": post_supplement_status_counts,
+        "post_supplement_level_present_count": int(len(post_supplement_present)),
+        "post_supplement_level_absent_count": int(len(post_supplement_absent)),
         "transactions_only_sector_keys": sorted(transactions_only["sector_key"].dropna().astype(str).unique()),
         "transactions_only_with_level_fred_mapping_count": int(len(transactions_only_with_fred_mapping)),
         "transactions_only_with_level_fred_mapping_sector_keys": sorted(
@@ -1587,7 +1663,16 @@ def _apply_history_preserving_backfill(frame: pd.DataFrame) -> pd.DataFrame:
 
     out = _sort_release_frame(frame)
     out["history_preserving_backfill"] = False
-    fill_columns = [column for column in [*PRIMARY_ESTIMATE_COLUMNS, *ESTIMATE_METADATA_COLUMNS] if column in out.columns]
+    fill_columns = [
+        column
+        for column in [
+            *PRIMARY_ESTIMATE_COLUMNS,
+            *SECONDARY_ESTIMATE_COLUMNS,
+            *INTERVAL_ESTIMATE_COLUMNS,
+            *ESTIMATE_METADATA_COLUMNS,
+        ]
+        if column in out.columns
+    ]
     available_estimate_columns = [column for column in PRIMARY_ESTIMATE_COLUMNS if column in out.columns]
     if not available_estimate_columns:
         return out
@@ -1726,7 +1811,8 @@ def _render_release_report(
             [
                 f"Coverage scope: `{release_summary['coverage_scope']}`",
                 f"Requested provider: `{release_summary['source_provider_requested']}`",
-                f"Report date: `{release_summary['report_date']}`",
+                f"Requested end date: `{release_summary['requested_end_date'] or 'none'}`",
+                f"Resolved latest snapshot date: `{release_summary['resolved_latest_snapshot_date']}`",
                 f"Canonical rows: `{release_summary['canonical_row_count']}`",
                 f"Latest snapshot rows: `{release_summary['latest_snapshot_row_count']}`",
                 f"High-confidence rows: `{release_summary['high_confidence_row_count']}`",
@@ -1772,9 +1858,11 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Required sectors audited: `{source_series_audit['required_sector_count']}`",
-                f"Level codes present in source: `{source_series_audit['source_level_present_count']}`",
-                f"Transactions-only sectors in source: `{source_series_audit['source_level_transactions_only_count']}`",
-                f"Level codes absent in source: `{source_series_audit['source_level_absent_count']}`",
+                f"Raw parsed Z.1 level codes present: `{source_series_audit['source_level_present_count']}`",
+                f"Raw parsed Z.1 transactions-only sectors: `{source_series_audit['source_level_transactions_only_count']}`",
+                f"Raw parsed Z.1 level codes absent: `{source_series_audit['source_level_absent_count']}`",
+                f"Post-supplement level codes present: `{source_series_audit['post_supplement_level_present_count']}`",
+                f"Post-supplement level codes absent: `{source_series_audit['post_supplement_level_absent_count']}`",
                 f"Transactions-only sectors: `{', '.join(source_series_audit['transactions_only_sector_keys']) or 'none'}`",
                 f"Transactions-only sectors with configured level FRED mappings: `{', '.join(source_series_audit['transactions_only_with_level_fred_mapping_sector_keys']) or 'none'}`",
                 f"Absent sectors: `{', '.join(source_series_audit['absent_sector_keys']) or 'none'}`",
@@ -1788,6 +1876,7 @@ def _render_release_report(
             "level_fred_id",
             "transactions_source_code",
             "source_level_code_present",
+            "post_supplement_level_code_present",
             "source_transactions_code_present",
             "same_base_source_codes",
         ]),
@@ -1797,7 +1886,7 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Artifact: `{required_inventory_path}`",
-                "Inventory tracks source-code availability, method priority, bills-series availability, history span, current backfill/promotion usage, and current provenance fields for every required atomic sector.",
+                "Inventory tracks raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, latest backfill/promotion usage, and latest provenance fields for every required atomic sector.",
             ]
         ),
         "",
@@ -1816,10 +1905,10 @@ def _render_release_report(
             "revaluation_rows_available",
             "history_preserving_backfill_rows",
             "release_window_override_rows",
-            "current_level_source_provider_used",
-            "current_level_supplemented_from_fred",
-            "current_point_estimate_origin",
-            "current_interval_origin",
+            "latest_level_source_provider_used",
+            "latest_level_supplemented_from_fred",
+            "latest_point_estimate_origin",
+            "latest_interval_origin",
         ]),
         "",
         "## History-Preserving Backfill",
