@@ -64,6 +64,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         out_dir / "latest_atomic_sector_snapshot.csv",
         out_dir / "high_confidence_sector_maturity.csv",
         out_dir / "reconciliation_nodes.csv",
+        out_dir / "fed_exact_overlay.csv",
         out_dir / "required_sector_inventory.csv",
         out_dir / "full_coverage_report.md",
         out_dir / "run_manifest.json",
@@ -76,7 +77,9 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     latest = pd.read_csv(out_dir / "latest_atomic_sector_snapshot.csv", parse_dates=["date"])
     high_confidence = pd.read_csv(out_dir / "high_confidence_sector_maturity.csv", parse_dates=["date"])
     reconciliation = pd.read_csv(out_dir / "reconciliation_nodes.csv", parse_dates=["date"])
+    fed_exact_overlay = pd.read_csv(out_dir / "fed_exact_overlay.csv", parse_dates=["date"])
     inventory = pd.read_csv(out_dir / "required_sector_inventory.csv")
+    manifest = json.loads((out_dir / "run_manifest.json").read_text(encoding="utf-8"))
     summary = json.loads((out_dir / "full_coverage_summary.json").read_text(encoding="utf-8"))
     report = (out_dir / "full_coverage_report.md").read_text(encoding="utf-8")
 
@@ -109,10 +112,24 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert canonical["node_type"].eq("atomic").all()
     assert "node_type" in reconciliation.columns
     assert reconciliation["node_type"].ne("atomic").all()
+    assert set(fed_exact_overlay.columns) == {
+        "date",
+        "sector_key",
+        "node_type",
+        "level",
+        "exact_wam_years",
+        "approx_modified_duration_years",
+        "bill_share",
+        "coupon_share",
+        "tips_share",
+        "frn_share",
+    }
+    assert fed_exact_overlay["sector_key"].eq("fed").all()
+    assert fed_exact_overlay["node_type"].eq("atomic").all()
     assert len(canonical[["date", "sector_key"]].drop_duplicates()) == len(canonical)
     assert len(latest[["date", "sector_key"]].drop_duplicates()) == len(latest)
     assert canonical["coverage_ratio"].isna().all()
-    assert canonical["coverage_measurement_basis"].eq("qualitative_placeholder").all()
+    assert canonical["coverage_measurement_basis"].eq("qualitative_source_coverage_classification").all()
     assert canonical["effective_duration_status"].eq("not_separately_estimated").all()
     assert canonical["effective_duration_years"].isna().all()
 
@@ -161,6 +178,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         "## Source Series Audit",
         "## Required Sector Inventory",
         "## Latest Common-Quarter Snapshot",
+        "## Fed Exact Overlay",
         "## History-Preserving Backfill",
         "## History Spans",
         "## High-Confidence Subset",
@@ -171,6 +189,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     ]
     for heading in expected_report_sections:
         assert heading in report
+    assert "direct SOMA-based Fed companion" in report
 
     expected_summary_keys = {
         "schema_version",
@@ -188,7 +207,12 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert expected_summary_keys.issubset(summary)
     assert summary["machine_readable_outputs"]["full_coverage_summary"] == str(out_dir / "full_coverage_summary.json")
     assert summary["machine_readable_outputs"]["full_coverage_report"] == str(out_dir / "full_coverage_report.md")
+    assert summary["machine_readable_outputs"]["fed_exact_overlay"] == str(out_dir / "fed_exact_overlay.csv")
     assert summary["machine_readable_outputs"]["required_sector_inventory"] == str(out_dir / "required_sector_inventory.csv")
+    assert manifest["output_paths"]["fed_exact_overlay"] == str(out_dir / "fed_exact_overlay.csv")
+    assert summary["fed_exact_overlay_summary"]["row_count"] == int(len(fed_exact_overlay))
+    assert summary["fed_exact_overlay_summary"]["date_start"] == fed_exact_overlay["date"].min().date().isoformat()
+    assert summary["fed_exact_overlay_summary"]["date_end"] == fed_exact_overlay["date"].max().date().isoformat()
     assert summary["high_confidence_subset"]["count"] == int(len(high_confidence))
     assert summary["release_summary"]["canonical_row_count"] == int(len(canonical))
     assert summary["release_summary"]["latest_snapshot_row_count"] == int(len(latest))
@@ -457,7 +481,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
                 "anchor_type": "soma_calibration_context" if sector_key == "fed" else "direct_z1_revaluation",
                 "concept_match": "calibrated" if sector_key == "fed" else "direct",
                 "coverage_ratio": pd.NA,
-                "coverage_measurement_basis": "qualitative_placeholder",
+                "coverage_measurement_basis": "qualitative_source_coverage_classification",
                 "coverage_label": "observed_level_with_soma_calibration" if sector_key == "fed" else "observed_level_with_inferred_maturity",
                 "level_source_provider_used": "fred_level_supplement" if sector_key in supplemented else "fed_z1",
                 "level_supplemented_from_fred": sector_key in supplemented,
@@ -487,7 +511,26 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
 
     monkeypatch.setattr(module, "_build_sector_panel", fake_build_sector_panel)
     monkeypatch.setattr(module, "_build_benchmark_blocks", lambda **kwargs: (pd.DataFrame({"date": [date], "1y": [0.0]}), None))
-    monkeypatch.setattr(module, "_build_fed_calibration", lambda **kwargs: ({"status": "ok", "interval_calibration": {"status": "empty"}}, pd.DataFrame()))
+    monkeypatch.setattr(
+        module,
+        "_build_fed_calibration",
+        lambda **kwargs: (
+            {"status": "ok", "interval_calibration": {"status": "empty"}},
+            pd.DataFrame(),
+            pd.DataFrame(
+                {
+                    "date": [date],
+                    "level": [1.0],
+                    "exact_wam_years": [5.0],
+                    "approx_modified_duration_years": [4.0],
+                    "bill_share": [0.2],
+                    "coupon_share": [0.8],
+                    "tips_share": [0.1],
+                    "frn_share": [0.05],
+                }
+            ),
+        ),
+    )
     monkeypatch.setattr(module, "_build_foreign_nowcast", lambda **kwargs: pd.DataFrame())
     monkeypatch.setattr(module, "_build_bank_constraints", lambda **kwargs: pd.DataFrame())
     monkeypatch.setattr(module, "estimate_effective_maturity_panel", lambda *args, **kwargs: synthetic_estimated.copy())
@@ -517,11 +560,14 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     latest = pd.read_csv(out_dir / "latest_atomic_sector_snapshot.csv")
     inventory = pd.read_csv(out_dir / "required_sector_inventory.csv")
     summary = json.loads((out_dir / "full_coverage_summary.json").read_text(encoding="utf-8"))
+    fed_exact_overlay = pd.read_csv(out_dir / "fed_exact_overlay.csv")
 
     assert summary["coverage_completeness"]["required_atomic_covered"] == len(required_atomic)
     assert summary["release_summary"]["latest_snapshot_row_count"] == len(required_atomic)
     assert len(canonical) == len(required_atomic)
     assert len(latest) == len(required_atomic)
+    assert len(fed_exact_overlay) == 1
+    assert fed_exact_overlay["sector_key"].eq("fed").all()
     supplemented_rows = canonical[canonical["sector_key"].isin(supplemented)]
     assert supplemented_rows["level_supplemented_from_fred"].all()
     assert set(supplemented_rows["level_source_provider_used"]) == {"fred_level_supplement"}
@@ -576,7 +622,7 @@ def test_build_fed_calibration_passes_factor_returns_through(monkeypatch, tmp_pa
     monkeypatch.setattr(module, "summarize_interval_calibration", lambda interval_calibration, settings=None: {"status": "ok"})
 
     factor_benchmark = pd.DataFrame({"date": [pd.Timestamp("2025-12-31")], "kr_5y": [0.01]})
-    summary, interval_calibration = module._build_fed_calibration(
+    summary, interval_calibration, exact_metrics = module._build_fed_calibration(
         sector_panel=pd.DataFrame(
             {
                 "sector_key": ["fed"],
@@ -599,6 +645,7 @@ def test_build_fed_calibration_passes_factor_returns_through(monkeypatch, tmp_pa
 
     assert summary["status"] == "ok"
     assert not interval_calibration.empty
+    assert not exact_metrics.empty
     pd.testing.assert_frame_equal(captured["summary_factor_returns"], factor_benchmark)
     pd.testing.assert_frame_equal(captured["interval_factor_returns"], factor_benchmark)
 

@@ -95,6 +95,7 @@ class FullCoverageReleaseArtifacts:
     latest_atomic_sector_snapshot_path: Path
     high_confidence_sector_maturity_path: Path
     reconciliation_nodes_path: Path
+    fed_exact_overlay_path: Path
     required_sector_inventory_path: Path
     report_path: Path
     manifest_path: Path
@@ -149,6 +150,7 @@ def build_full_coverage_release(
     latest_path = out_dir / "latest_atomic_sector_snapshot.csv"
     high_confidence_path = out_dir / "high_confidence_sector_maturity.csv"
     reconciliation_path = out_dir / "reconciliation_nodes.csv"
+    fed_exact_overlay_path = out_dir / "fed_exact_overlay.csv"
     required_inventory_path = out_dir / "required_sector_inventory.csv"
     manifest_path = out_dir / "run_manifest.json"
 
@@ -206,7 +208,7 @@ def build_full_coverage_release(
         "source_provider": source_provider,
     }
 
-    fed_summary, interval_calibration = _build_fed_calibration(
+    fed_summary, interval_calibration, fed_exact_metrics = _build_fed_calibration(
         sector_panel=sector_panel,
         benchmark=benchmark,
         factor_benchmark=factor_benchmark,
@@ -354,6 +356,7 @@ def build_full_coverage_release(
     latest_export = _project_columns(latest_atomic, export_columns)
     high_confidence_export = _project_columns(high_confidence, export_columns)
     reconciliation_export = _project_columns(reconciliation, export_columns)
+    fed_exact_overlay = _build_fed_exact_overlay(fed_exact_metrics)
     required_sector_inventory = _build_required_sector_inventory(
         canonical_atomic=canonical_atomic,
         sector_panel=sector_panel,
@@ -369,6 +372,7 @@ def build_full_coverage_release(
     write_table(latest_export, latest_path)
     write_table(high_confidence_export, high_confidence_path)
     write_table(reconciliation_export, reconciliation_path)
+    write_table(fed_exact_overlay, fed_exact_overlay_path)
     write_table(required_sector_inventory, required_inventory_path)
 
     release_summary = _build_release_summary(
@@ -397,6 +401,7 @@ def build_full_coverage_release(
         coverage_registry=coverage_registry,
     )
     latest_snapshot_summary = _build_latest_snapshot_summary(latest_atomic, latest_quarter)
+    fed_exact_overlay_summary = _build_fed_exact_overlay_summary(fed_exact_overlay)
     history_backfill_summary = _build_history_backfill_summary(canonical_atomic)
     validation = _build_validation_summary(
         canonical_atomic=canonical_atomic,
@@ -427,6 +432,7 @@ def build_full_coverage_release(
         "history_spans": history_spans,
         "history_preserving_backfill": history_backfill_summary,
         "latest_snapshot_summary": latest_snapshot_summary,
+        "fed_exact_overlay_summary": fed_exact_overlay_summary,
         "high_confidence_subset": {
             "count": int(len(high_confidence)),
             "sector_keys": sorted(str(value) for value in high_confidence["sector_key"].dropna().astype(str).unique()),
@@ -440,6 +446,7 @@ def build_full_coverage_release(
             "latest_atomic_sector_snapshot": str(latest_path),
             "high_confidence_sector_maturity": str(high_confidence_path),
             "reconciliation_nodes": str(reconciliation_path),
+            "fed_exact_overlay": str(fed_exact_overlay_path),
             "required_sector_inventory": str(required_inventory_path),
             "full_coverage_report": str(report_path),
             "full_coverage_summary": str(summary_json_path),
@@ -474,6 +481,7 @@ def build_full_coverage_release(
             "latest_atomic_sector_snapshot": str(latest_path),
             "high_confidence_sector_maturity": str(high_confidence_path),
             "reconciliation_nodes": str(reconciliation_path),
+            "fed_exact_overlay": str(fed_exact_overlay_path),
             "required_sector_inventory": str(required_inventory_path),
             "full_coverage_report": str(report_path),
             "full_coverage_summary": str(summary_json_path),
@@ -489,6 +497,8 @@ def build_full_coverage_release(
         history_spans=history_spans,
         history_backfill_summary=history_backfill_summary,
         latest_snapshot_summary=latest_snapshot_summary,
+        fed_exact_overlay=fed_exact_overlay,
+        fed_exact_overlay_summary=fed_exact_overlay_summary,
         high_confidence=high_confidence,
         weakest_sectors=weakest_sectors,
         reconciliation_diagnostics=reconciliation_diagnostics,
@@ -500,6 +510,7 @@ def build_full_coverage_release(
         canonical_path=canonical_path,
         latest_path=latest_path,
         reconciliation_path=reconciliation_path,
+        fed_exact_overlay_path=fed_exact_overlay_path,
         required_inventory_path=required_inventory_path,
         required_sector_inventory=required_sector_inventory,
         summary_json_path=summary_json_path,
@@ -512,6 +523,7 @@ def build_full_coverage_release(
         latest_atomic_sector_snapshot_path=latest_path,
         high_confidence_sector_maturity_path=high_confidence_path,
         reconciliation_nodes_path=reconciliation_path,
+        fed_exact_overlay_path=fed_exact_overlay_path,
         required_sector_inventory_path=required_inventory_path,
         report_path=report_path,
         manifest_path=manifest_path,
@@ -762,7 +774,7 @@ def _build_fed_calibration(
     source_artifacts: dict[str, Any],
     provider_summary: dict[str, str],
     intermediate_artifacts: dict[str, Any],
-) -> tuple[dict[str, Any], pd.DataFrame]:
+) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame]:
     fed_panel = sector_panel[sector_panel["sector_key"] == "fed"].copy()
     if fed_panel.empty:
         raise ValueError("Sector panel does not contain the required 'fed' sector.")
@@ -831,7 +843,56 @@ def _build_fed_calibration(
     dump_json(summary, summary_path)
     intermediate_artifacts["fed_interval_calibration"] = interval_path
     intermediate_artifacts["fed_calibration_summary"] = summary_path
-    return summary, interval_calibration
+    return summary, interval_calibration, exact_metrics
+
+
+def _build_fed_exact_overlay(exact_metrics: pd.DataFrame) -> pd.DataFrame:
+    overlay = exact_metrics.copy()
+    if overlay.empty:
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "sector_key",
+                "node_type",
+                "level",
+                "exact_wam_years",
+                "approx_modified_duration_years",
+                "bill_share",
+                "coupon_share",
+                "tips_share",
+                "frn_share",
+            ]
+        )
+
+    overlay["date"] = pd.to_datetime(overlay.get("date"), errors="coerce")
+    overlay["sector_key"] = "fed"
+    overlay["node_type"] = "atomic"
+    overlay = overlay[
+        [
+            "date",
+            "sector_key",
+            "node_type",
+            "level",
+            "exact_wam_years",
+            "approx_modified_duration_years",
+            "bill_share",
+            "coupon_share",
+            "tips_share",
+            "frn_share",
+        ]
+    ].copy()
+    return overlay.sort_values("date").reset_index(drop=True)
+
+
+def _build_fed_exact_overlay_summary(fed_exact_overlay: pd.DataFrame) -> dict[str, Any]:
+    if fed_exact_overlay.empty:
+        return {"row_count": 0, "date_start": None, "date_end": None}
+    dates = pd.to_datetime(fed_exact_overlay["date"], errors="coerce").dropna()
+    return {
+        "row_count": int(len(fed_exact_overlay)),
+        "date_start": None if dates.empty else pd.Timestamp(dates.min()).date().isoformat(),
+        "date_end": None if dates.empty else pd.Timestamp(dates.max()).date().isoformat(),
+    }
 
 
 def _resolve_release_promotion_window_quarters(release_config_data: dict[str, Any]) -> int:
@@ -1786,6 +1847,8 @@ def _render_release_report(
     history_spans: list[dict[str, Any]],
     history_backfill_summary: dict[str, Any],
     latest_snapshot_summary: dict[str, Any],
+    fed_exact_overlay: pd.DataFrame,
+    fed_exact_overlay_summary: dict[str, Any],
     high_confidence: pd.DataFrame,
     weakest_sectors: list[dict[str, Any]],
     reconciliation_diagnostics: dict[str, Any],
@@ -1797,6 +1860,7 @@ def _render_release_report(
     canonical_path: Path,
     latest_path: Path,
     reconciliation_path: Path,
+    fed_exact_overlay_path: Path,
     required_inventory_path: Path,
     required_sector_inventory: pd.DataFrame,
     summary_json_path: Path,
@@ -1813,6 +1877,7 @@ def _render_release_report(
                 f"Requested provider: `{release_summary['source_provider_requested']}`",
                 f"Requested end date: `{release_summary['requested_end_date'] or 'none'}`",
                 f"Resolved latest snapshot date: `{release_summary['resolved_latest_snapshot_date']}`",
+                "Canonical panel preserves the longest feasible sector history even when the latest common-quarter snapshot is narrower.",
                 f"Canonical rows: `{release_summary['canonical_row_count']}`",
                 f"Latest snapshot rows: `{release_summary['latest_snapshot_row_count']}`",
                 f"High-confidence rows: `{release_summary['high_confidence_row_count']}`",
@@ -1832,12 +1897,30 @@ def _render_release_report(
                 f"Snapshot high-confidence rows: `{latest_snapshot_summary['high_confidence_rows']}`",
                 f"Snapshot history-preserving backfill rows: `{latest_snapshot_summary['history_preserving_backfill_rows']}`",
                 f"Snapshot short-window promoted rows: `{latest_snapshot_summary['release_window_override_rows']}`",
+                "This snapshot is a separate common-quarter cross-section, not the definition of the canonical history span.",
             ]
         ),
         "",
         _render_markdown_table(
             _summarize_frame(latest_atomic, ["sector_key", "date", "high_confidence_flag", "history_preserving_backfill", "release_window_override"]),
             columns=["sector_key", "date", "high_confidence_flag", "history_preserving_backfill", "release_window_override"],
+        ),
+        "",
+        "## Fed Exact Overlay",
+        "",
+        _render_bullets(
+            [
+                f"Artifact: `{fed_exact_overlay_path}`",
+                f"Rows: `{fed_exact_overlay_summary['row_count']}`",
+                f"Date start: `{fed_exact_overlay_summary['date_start']}`",
+                f"Date end: `{fed_exact_overlay_summary['date_end']}`",
+                "This artifact is the direct SOMA-based Fed companion. The canonical `fed` row in `canonical_atomic_sector_maturity.csv` remains the cross-sector-comparable inferred series.",
+            ]
+        ),
+        "",
+        _render_markdown_table(
+            _summarize_frame(fed_exact_overlay, ["date", "sector_key", "exact_wam_years", "approx_modified_duration_years", "bill_share"]),
+            columns=["date", "sector_key", "exact_wam_years", "approx_modified_duration_years", "bill_share"],
         ),
         "",
         "## Coverage Completeness",
@@ -2009,6 +2092,7 @@ def _render_release_report(
                     "latest_atomic_sector_snapshot": str(latest_path),
                     "high_confidence_sector_maturity": str(high_confidence_path),
                     "reconciliation_nodes": str(reconciliation_path),
+                    "fed_exact_overlay": str(fed_exact_overlay_path),
                     "required_sector_inventory": str(required_inventory_path),
                     "full_coverage_summary": str(summary_json_path),
                     "run_manifest": str(manifest_path),
@@ -2019,6 +2103,7 @@ def _render_release_report(
                 "latest_atomic_sector_snapshot",
                 "high_confidence_sector_maturity",
                 "reconciliation_nodes",
+                "fed_exact_overlay",
                 "required_sector_inventory",
                 "full_coverage_summary",
                 "run_manifest",

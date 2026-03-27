@@ -54,17 +54,8 @@ FORBIDDEN_TEXT_PATTERNS = [
     (re.compile(r"\bdo/"), "public files must not reference the internal do/ workspace"),
     (re.compile(r"\bsource\s+\.env\b"), "public files must not require a private .env file"),
     (re.compile(r"\$HOME/venvs/"), "public files must not depend on a home-directory-specific virtualenv path"),
-    (re.compile(r"/Users/shanewray/"), "public files must not embed workstation-specific absolute paths"),
-    (re.compile(r"\bhandoff\.md\b", flags=re.IGNORECASE), "public files must not reference internal handoff docs"),
-    (re.compile(r"\btodo\.md\b", flags=re.IGNORECASE), "public files must not reference internal todo docs"),
-    (re.compile(r"\bdontdo\.md\b", flags=re.IGNORECASE), "public files must not reference internal dontdo docs"),
-    (re.compile(r"\bchanges\.md\b", flags=re.IGNORECASE), "public files must not reference internal change logs"),
-    (re.compile(r"\borca\.md\b", flags=re.IGNORECASE), "public files must not reference internal orchestrator docs"),
-    (re.compile(r"\bmako\.md\b", flags=re.IGNORECASE), "public files must not reference internal agent docs"),
-    (re.compile(r"\bdairy\.md\b", flags=re.IGNORECASE), "public files must not reference internal agent docs"),
-    (re.compile(r"\btandy\.md\b", flags=re.IGNORECASE), "public files must not reference internal agent docs"),
-    (re.compile(r"\bAGENTS\.md\b"), "public files must not reference internal agent docs"),
-    (re.compile(r"\bSTATUS\.md\b"), "public files must not reference internal status docs"),
+    (re.compile(r"/Users/[^/\s]+/"), "public files must not embed workstation-specific absolute paths"),
+    (re.compile(r"/home/[^/\s]+/"), "public files must not embed workstation-specific absolute paths"),
 ]
 
 

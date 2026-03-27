@@ -202,6 +202,7 @@ Both commands build the separate `v0.2` artifact set under `outputs/full_coverag
 - `latest_atomic_sector_snapshot.csv`
 - `high_confidence_sector_maturity.csv`
 - `reconciliation_nodes.csv`
+- `fed_exact_overlay.csv`
 - `required_sector_inventory.csv`
 - `full_coverage_report.md`
 - `run_manifest.json`
@@ -214,9 +215,11 @@ The full-coverage release path:
 - in the standard live workflow, supplements required-sector level series that are missing from the Fed release zip but available through configured FRED mappings
 - keeps weak sectors in the output with explicit tiering
 - allows ragged histories instead of forcing a shared start date
+- preserves the longest feasible sector history in the canonical panel and treats the latest snapshot as a separate common-quarter cross-section
 - uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
 - marks leading warmup carry rows with `history_preserving_backfill`
 - exports basis fields, direct composition metrics, and interval bands alongside the headline maturity estimates
+- publishes `fed_exact_overlay.csv` as a direct SOMA companion while keeping the canonical Fed row cross-sector-comparable and inferred
 - writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, and latest provenance fields
 - publishes reconciliation diagnostics for formula and parent/child rollups
 - treats the high-confidence subset as a filter, not as the scope boundary

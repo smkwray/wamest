@@ -461,7 +461,7 @@ def _annotation_fields(row: pd.Series, *, annotation_mode: str = "default") -> d
         "anchor_type": anchor_type_map[sector_class],
         "concept_match": concept_match_map[sector_class],
         "coverage_ratio": pd.NA if annotation_mode == "full_coverage" else legacy_coverage_ratio_map[sector_class],
-        "coverage_measurement_basis": "qualitative_placeholder" if annotation_mode == "full_coverage" else pd.NA,
+        "coverage_measurement_basis": "qualitative_source_coverage_classification" if annotation_mode == "full_coverage" else pd.NA,
         "coverage_label": coverage_label_map[sector_class] if annotation_mode == "full_coverage" else pd.NA,
     }
 

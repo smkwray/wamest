@@ -27,10 +27,11 @@ The full-coverage release writes these top-level artifacts:
 2. `latest_atomic_sector_snapshot.csv`
 3. `high_confidence_sector_maturity.csv`
 4. `reconciliation_nodes.csv`
-5. `required_sector_inventory.csv`
-6. `full_coverage_report.md`
-7. `run_manifest.json`
-8. `full_coverage_summary.json`
+5. `fed_exact_overlay.csv`
+6. `required_sector_inventory.csv`
+7. `full_coverage_report.md`
+8. `run_manifest.json`
+9. `full_coverage_summary.json`
 
 ## Canonical atomic panel
 
@@ -52,6 +53,7 @@ Expected interpretation:
 - calibrated uncertainty bands communicate uncertainty and weak identification
 - `effective_duration_years` is only populated when a distinct duration map is actually supplied; otherwise `effective_duration_status` records that the metric is not separately estimated
 - missing early history for a sector is allowed only when the sector has no feasible public estimate for those dates
+- the canonical panel preserves the longest feasible history for each sector and is not truncated to the latest common quarter
 
 ## Latest snapshot
 
@@ -63,6 +65,18 @@ Rules:
 - the snapshot quarter is the latest quarter shared across those covered required atomic sectors
 - the row for each sector is taken from that common quarter
 - sectors without a row at the resolved common quarter fail validation
+- this artifact is a common-quarter cross-section companion to the canonical panel, not the canonical panel's history definition
+
+## Fed exact overlay
+
+`fed_exact_overlay.csv` is the direct SOMA-based Fed companion artifact.
+
+Rules:
+
+- contains only Fed rows with `sector_key == fed`
+- is built from the already-produced quarterly SOMA exact metrics used during Fed calibration
+- does not replace the canonical Fed row in `canonical_atomic_sector_maturity.csv`
+- exists to expose the direct security-level Fed benchmark alongside the cross-sector-comparable inferred canonical panel
 
 ## High-confidence subset
 
@@ -118,6 +132,7 @@ The full-coverage release should validate the following:
 
 - release metadata and schema version
 - per-sector history spans and inclusion status
+- `fed_exact_overlay_summary` with row count and date span
 - required-sector completeness results
 - source-series audit results, including raw parsed-Z.1 counts for sectors whose configured level code is present versus transactions-only or absent, plus post-supplement level-availability counts and the subset of transactions-only sectors that already have a configured level `fred_ids` mapping
 - required-sector inventory artifact path and row count
@@ -140,3 +155,4 @@ Preferred language for the full-coverage release:
 - reconciliation nodes
 
 Avoid implying that all sectors are equally observed or that the full-coverage release is a single-number preview product.
+Avoid implying that the Fed exact overlay replaces the canonical Fed series; it is a companion artifact.
