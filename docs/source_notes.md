@@ -1,6 +1,6 @@
 # Public source notes
 
-This project is built around free public sources. The default public preview path is nominal-only, non-interactive, and pinned to `configs/model_public_preview.yaml`; the broader hybrid estimator in `configs/model_defaults.yaml` is available for standalone research runs, while TIPS, FRN, key-rate, and FFIEC 002 workflows remain outside the stable public-preview baseline. A separate `v0.2` full-coverage research release path uses the full-scope Fed Z.1 build in its standard live workflow, supplements missing required-sector level series from configured FRED mappings, keeps weak sectors in the output with explicit tiering, and allows ragged histories rather than forcing a shared start date.
+This project is built around free public sources. The default public preview path is nominal-only, non-interactive, and pinned to `configs/model_public_preview.yaml`; the broader hybrid estimator in `configs/model_defaults.yaml` is available for standalone research runs, while TIPS, FRN, key-rate, and FFIEC 002 workflows remain outside the stable public-preview baseline. A separate `v0.2` full-coverage research release path uses the full-scope Fed Z.1 build in its standard live workflow, supplements missing required-sector level series from configured FRED mappings, keeps required sector/date rows in the main surface with explicit publication-status labeling, and allows ragged histories rather than forcing a shared start date.
 
 - Federal Reserve Z.1 Data Download Program / release tables
 - Federal Reserve H.15 Treasury constant-maturity yields

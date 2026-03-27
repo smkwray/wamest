@@ -40,8 +40,8 @@ def test_full_coverage_release_builder_surface_is_exposed():
     assert "--coverage-scope" in help_text
     assert "full" in help_text
     assert "full_coverage_report.md" in help_text
-    assert "canonical_atomic_sector_maturity.csv" in help_text
-    assert "latest_atomic_sector_snapshot.csv" in help_text
+    assert "canonical_sector_maturity.csv" in help_text
+    assert "latest_sector_snapshot.csv" in help_text
     assert "high_confidence_sector_maturity.csv" in help_text
     assert "reconciliation_nodes.csv" in help_text
     assert "required_sector_inventory.csv" in help_text

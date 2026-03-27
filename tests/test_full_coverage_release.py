@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from treasury_sector_maturity.coverage import canonical_atomic_sector_keys, required_full_coverage_sector_keys
+from treasury_sector_maturity.coverage import required_canonical_sector_keys
 from treasury_sector_maturity.z1 import build_sector_panel, compute_identity_errors, load_series_catalog, materialize_series_panel, parse_z1_ddp_csv
 
 
@@ -60,8 +60,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
 
     assert artifacts is not None
     expected_paths = [
-        out_dir / "canonical_atomic_sector_maturity.csv",
-        out_dir / "latest_atomic_sector_snapshot.csv",
+        out_dir / "canonical_sector_maturity.csv",
+        out_dir / "latest_sector_snapshot.csv",
         out_dir / "high_confidence_sector_maturity.csv",
         out_dir / "reconciliation_nodes.csv",
         out_dir / "fed_exact_overlay.csv",
@@ -73,8 +73,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     for path in expected_paths:
         assert path.exists(), path
 
-    canonical = pd.read_csv(out_dir / "canonical_atomic_sector_maturity.csv", parse_dates=["date"])
-    latest = pd.read_csv(out_dir / "latest_atomic_sector_snapshot.csv", parse_dates=["date"])
+    canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv", parse_dates=["date"])
+    latest = pd.read_csv(out_dir / "latest_sector_snapshot.csv", parse_dates=["date"])
     high_confidence = pd.read_csv(out_dir / "high_confidence_sector_maturity.csv", parse_dates=["date"])
     reconciliation = pd.read_csv(out_dir / "reconciliation_nodes.csv", parse_dates=["date"])
     fed_exact_overlay = pd.read_csv(out_dir / "fed_exact_overlay.csv", parse_dates=["date"])
@@ -86,7 +86,10 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "node_type" in canonical.columns
     assert "high_confidence_flag" in canonical.columns
     assert "history_preserving_backfill" in canonical.columns
-    assert "release_window_override" in canonical.columns
+    assert "publication_status" in canonical.columns
+    assert "publication_status_reason" in canonical.columns
+    assert "row_is_short_window_estimate" in canonical.columns
+    assert "estimate_origin_includes_short_window_promotion" in canonical.columns
     assert "level_measurement_basis" in canonical.columns
     assert "maturity_measurement_basis" in canonical.columns
     assert "coverage_measurement_basis" in canonical.columns
@@ -109,9 +112,11 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "effective_duration_years_upper" in canonical.columns
     assert "zero_coupon_equivalent_years_lower" in canonical.columns
     assert "zero_coupon_equivalent_years_upper" in canonical.columns
-    assert canonical["node_type"].eq("atomic").all()
+    assert set(canonical["sector_key"].astype(str)) == set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
     assert "node_type" in reconciliation.columns
-    assert reconciliation["node_type"].ne("atomic").all()
+    assert set(reconciliation["sector_key"].astype(str)).isdisjoint(set(canonical["sector_key"].astype(str)))
+    assert "credit_unions_marketable_proxy" not in set(reconciliation["sector_key"].astype(str))
+    assert "households_nonprofits" not in set(reconciliation["sector_key"].astype(str))
     assert set(fed_exact_overlay.columns) == {
         "date",
         "sector_key",
@@ -134,11 +139,9 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert canonical["effective_duration_years"].isna().all()
 
     sector_panel = _build_full_scope_toy_sector_panel()
-    registry_atomic = set(canonical_atomic_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
-    registry_required = set(required_full_coverage_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
-    required_atomic = registry_atomic & registry_required
+    required_canonical = set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
     latest_by_sector = sector_panel.loc[
-        sector_panel["sector_key"].isin(required_atomic) & sector_panel["level"].notna(),
+        sector_panel["sector_key"].isin(required_canonical),
         ["sector_key", "date"],
     ].groupby("sector_key")["date"].max()
     latest_quarter = pd.Timestamp(latest_by_sector.min())
@@ -149,19 +152,20 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         assert set(latest["sector_key"].astype(str)) == expected_latest_sectors
 
     expected_required_rows = sector_panel[
-        (sector_panel["sector_key"].isin(required_atomic)) & sector_panel["level"].notna()
+        sector_panel["sector_key"].isin(required_canonical)
     ][["date", "sector_key"]].drop_duplicates()
     observed_required_rows = canonical[["date", "sector_key"]].drop_duplicates()
     merged = expected_required_rows.merge(observed_required_rows, on=["date", "sector_key"], how="left", indicator=True)
     assert merged["_merge"].eq("both").all()
-    required_with_estimates = canonical[
-        canonical["sector_key"].isin(required_atomic)
-        & canonical[["bill_share", "effective_duration_years", "zero_coupon_equivalent_years"]].notna().any(axis=1)
+    required_with_status = canonical[
+        canonical["sector_key"].isin(required_canonical)
+        & canonical["publication_status"].notna()
     ][["date", "sector_key"]].drop_duplicates()
-    estimate_merged = expected_required_rows.merge(required_with_estimates, on=["date", "sector_key"], how="left", indicator=True)
+    estimate_merged = expected_required_rows.merge(required_with_status, on=["date", "sector_key"], how="left", indicator=True)
     assert estimate_merged["_merge"].eq("both").all()
     assert canonical["history_preserving_backfill"].fillna(False).any()
-    assert canonical["release_window_override"].fillna(False).any()
+    assert canonical["row_is_short_window_estimate"].fillna(False).any()
+    assert canonical["estimate_origin_includes_short_window_promotion"].fillna(False).any()
 
     filtered_high_confidence = canonical[canonical["high_confidence_flag"].fillna(False)].copy()
     canonical_cols = list(canonical.columns)
@@ -221,10 +225,10 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert summary["release_summary"]["required_sector_inventory_row_count"] == int(len(inventory))
     assert "requested_end_date" in summary["release_summary"]
     assert "resolved_latest_snapshot_date" in summary["release_summary"]
-    expected_required_covered = len(set(canonical["sector_key"].astype(str)) & required_atomic)
-    assert summary["coverage_completeness"]["required_atomic_covered"] == expected_required_covered
-    assert summary["coverage_completeness"]["missing_required_estimate_rows"] == 0
-    assert summary["coverage_completeness"]["required_estimate_coverage_ratio"] <= 1.0
+    expected_required_covered = len(set(canonical["sector_key"].astype(str)) & required_canonical)
+    assert summary["coverage_completeness"]["required_canonical_covered"] == expected_required_covered
+    assert summary["coverage_completeness"]["missing_required_publication_rows"] == 0
+    assert summary["coverage_completeness"]["published_estimate_coverage_ratio"] <= 1.0
     assert summary["source_series_audit"]["required_sector_count"] == int(len(inventory))
     assert summary["source_series_audit"]["source_level_status_counts"]["present"] > 0
     assert summary["source_series_audit"]["source_level_absent_count"] > 0
@@ -232,19 +236,19 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "transactions_only_with_level_fred_mapping_count" in summary["source_series_audit"]
     assert summary["latest_snapshot_summary"]["latest_common_quarter"] == latest["date"].iloc[0].date().isoformat()
     assert summary["history_preserving_backfill"]["history_preserving_backfill_rows"] > 0
-    assert summary["history_preserving_backfill"]["release_window_override_rows"] > 0
+    assert summary["history_preserving_backfill"]["short_window_estimate_rows"] > 0
+    assert summary["history_preserving_backfill"]["short_window_origin_rows"] > 0
     assert summary["reconciliation_diagnostics"]["formula_rows_checked"] > 0
     assert summary["reconciliation_diagnostics"]["parent_rows_checked"] > 0
     assert summary["reconciliation_diagnostics"]["formula_rows_failing"] == 0
     assert summary["reconciliation_diagnostics"]["parent_rows_failing"] == 0
-    assert summary["validation"]["required_sector_estimates_complete"] is True
-    assert summary["validation"]["canonical_atomic_sector_dates_unique"] is True
+    assert summary["validation"]["required_sector_publication_complete"] is True
+    assert summary["validation"]["canonical_sector_dates_unique"] is True
     assert summary["validation"]["latest_snapshot_sector_dates_unique"] is True
-    assert summary["validation"]["required_estimate_coverage_ratio_bounded"] is True
+    assert summary["validation"]["published_estimate_coverage_ratio_bounded"] is True
     assert summary["validation"]["formula_reconciliation_passes"] is True
     assert summary["validation"]["parent_child_reconciliation_passes"] is True
-    assert set(inventory["sector_key"].astype(str)) == required_atomic
-    assert inventory["release_window_promotion_eligible"].all()
+    assert set(inventory["sector_key"].astype(str)) == required_canonical
     assert {
         "level_rows_available",
         "transactions_rows_available",
@@ -271,7 +275,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert fed_inventory["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     life_inventory = inventory[inventory["sector_key"] == "life_insurers"].iloc[0]
     assert life_inventory["source_level_status"] == "absent"
-    promoted_inventory = inventory[inventory["release_window_override_rows"] > 0]
+    promoted_inventory = inventory[inventory["short_window_origin_rows"] > 0]
     assert not promoted_inventory.empty
     fed_row = canonical[canonical["sector_key"] == "fed"].iloc[0]
     assert fed_row["anchor_type"] == "soma_calibration_context"
@@ -396,9 +400,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     builder = getattr(module, "build_full_coverage_release")
 
     registry_path = FULL_CATALOG.parent / "coverage_registry.yaml"
-    required_atomic = sorted(
-        set(required_full_coverage_sector_keys(registry_path)) & set(canonical_atomic_sector_keys(registry_path))
-    )
+    required_canonical = sorted(required_canonical_sector_keys(registry_path))
     coverage_registry = module.load_coverage_registry(registry_path)
     sector_defs = module.load_yaml(FULL_SECTOR_DEFS).get("sectors") or {}
     catalog = load_series_catalog(FULL_CATALOG)
@@ -407,7 +409,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     observed_codes = set(long_df["series_code"].dropna().astype(str))
     supplemented: set[str] = set()
     supplemented_long_df = long_df.copy()
-    for sector_key in required_atomic:
+    for sector_key in required_canonical:
         level_series_key = sector_defs.get(sector_key, {}).get("level_series")
         if not level_series_key:
             continue
@@ -438,7 +440,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
 
     synthetic_sector_rows = []
     synthetic_estimated_rows = []
-    for idx, sector_key in enumerate(required_atomic, start=1):
+    for idx, sector_key in enumerate(required_canonical, start=1):
         node = coverage_registry[sector_key]
         synthetic_sector_rows.append(
             {
@@ -465,7 +467,8 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
             {
                 "date": date,
                 "sector_key": sector_key,
-                "node_type": "atomic",
+                "node_type": node.node_type,
+                "is_canonical": node.is_canonical,
                 "sector_family": node.sector_family,
                 "required_for_full_coverage": node.required_for_full_coverage,
                 "concept_risk": node.concept_risk,
@@ -474,8 +477,9 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
                 "estimator_family": "direct_level_plus_revaluation_inference",
                 "selection_reason": "synthetic deterministic release test",
                 "high_confidence_flag": sector_key == "fed",
-                "release_window_override": False,
-                "release_window_override_quarters": pd.NA,
+                "row_is_short_window_estimate": False,
+                "estimate_origin_includes_short_window_promotion": False,
+                "short_window_promotion_quarters": pd.NA,
                 "level_evidence_tier": "A",
                 "maturity_evidence_tier": "B" if sector_key == "fed" else "C",
                 "anchor_type": "soma_calibration_context" if sector_key == "fed" else "direct_z1_revaluation",
@@ -556,16 +560,16 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
         summary_json_out=out_dir / "full_coverage_summary.json",
     )
 
-    canonical = pd.read_csv(out_dir / "canonical_atomic_sector_maturity.csv")
-    latest = pd.read_csv(out_dir / "latest_atomic_sector_snapshot.csv")
+    canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv")
+    latest = pd.read_csv(out_dir / "latest_sector_snapshot.csv")
     inventory = pd.read_csv(out_dir / "required_sector_inventory.csv")
     summary = json.loads((out_dir / "full_coverage_summary.json").read_text(encoding="utf-8"))
     fed_exact_overlay = pd.read_csv(out_dir / "fed_exact_overlay.csv")
 
-    assert summary["coverage_completeness"]["required_atomic_covered"] == len(required_atomic)
-    assert summary["release_summary"]["latest_snapshot_row_count"] == len(required_atomic)
-    assert len(canonical) == len(required_atomic)
-    assert len(latest) == len(required_atomic)
+    assert summary["coverage_completeness"]["required_canonical_covered"] == len(required_canonical)
+    assert summary["release_summary"]["latest_snapshot_row_count"] == len(required_canonical)
+    assert len(canonical) == len(required_canonical)
+    assert len(latest) == len(required_canonical)
     assert len(fed_exact_overlay) == 1
     assert fed_exact_overlay["sector_key"].eq("fed").all()
     supplemented_rows = canonical[canonical["sector_key"].isin(supplemented)]
@@ -658,7 +662,7 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
     sector_defs = module.load_yaml(FULL_SECTOR_DEFS).get("sectors") or {}
     catalog = load_series_catalog(FULL_CATALOG)
 
-    canonical_atomic = pd.DataFrame(
+    canonical = pd.DataFrame(
         {
             "date": pd.to_datetime(["2025-09-30", "2025-12-31"]),
             "sector_key": ["fed", "fed"],
@@ -668,8 +672,11 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
             "level_supplemented_from_fred": [False, True],
             "point_estimate_origin": ["rolling_benchmark_weights", "rolling_benchmark_weights_plus_factors"],
             "interval_origin": ["old_interval", "new_interval"],
+            "publication_status": ["published_estimate", "published_estimate"],
+            "publication_status_reason": ["old", "new"],
             "history_preserving_backfill": [False, False],
-            "release_window_override": [False, False],
+            "row_is_short_window_estimate": [False, False],
+            "estimate_origin_includes_short_window_promotion": [False, False],
         }
     )
     sector_panel = pd.DataFrame(
@@ -684,7 +691,7 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
     )
 
     inventory = inventory_builder(
-        canonical_atomic=canonical_atomic,
+        canonical=canonical,
         sector_panel=sector_panel,
         sector_definitions=sector_defs,
         coverage_registry=coverage_registry,
@@ -700,6 +707,7 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
     assert bool(fed_row["latest_level_supplemented_from_fred"]) is True
     assert fed_row["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     assert fed_row["latest_interval_origin"] == "new_interval"
+    assert fed_row["latest_publication_status"] == "published_estimate"
 
 
 def test_full_coverage_release_summary_distinguishes_requested_end_date_from_resolved_snapshot(tmp_path):
@@ -762,16 +770,12 @@ def test_full_coverage_release_summary_tracks_required_sector_history_spans(tmp_
 
     summary = json.loads((out_dir / "full_coverage_summary.json").read_text(encoding="utf-8"))
     sector_panel = _build_full_scope_toy_sector_panel()
-    canonical = pd.read_csv(out_dir / "canonical_atomic_sector_maturity.csv", parse_dates=["date"])
+    canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv", parse_dates=["date"])
 
     history_spans = {row["sector_key"]: row for row in summary["history_spans"]}
-    required_atomic = set(required_full_coverage_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml")) & set(
-        canonical_atomic_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml")
-    )
-    for sector_key in required_atomic:
-        sector_rows = sector_panel[(sector_panel["sector_key"] == sector_key) & sector_panel["level"].notna()]
-        if sector_rows.empty:
-            continue
+    required_canonical = set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
+    for sector_key in required_canonical:
+        sector_rows = sector_panel[sector_panel["sector_key"] == sector_key]
         assert sector_key in history_spans
         span = history_spans[sector_key]
         assert span["included"] is True
@@ -779,7 +783,7 @@ def test_full_coverage_release_summary_tracks_required_sector_history_spans(tmp_
         assert span["date_end"] == pd.Timestamp(sector_rows["date"].max()).date().isoformat()
 
 
-def test_full_coverage_release_raises_when_required_sector_estimates_remain_missing(tmp_path, monkeypatch):
+def test_full_coverage_release_marks_required_sector_without_estimate_as_status_only(tmp_path, monkeypatch):
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
     builder = getattr(module, "build_full_coverage_release")
     original_estimator = getattr(module, "estimate_effective_maturity_panel")
@@ -809,28 +813,28 @@ def test_full_coverage_release_raises_when_required_sector_estimates_remain_miss
     monkeypatch.setattr(module, "estimate_effective_maturity_panel", broken_estimator)
 
     out_dir = tmp_path / "full_coverage_release"
-    try:
-        builder(
-            out_dir=out_dir,
-            source_provider="fed",
-            coverage_scope="full",
-            z1_file=TOY_Z1,
-            h15_file=TOY_H15,
-            curve_file=[f"tips_real_yield_constant_maturity={TOY_TIPS}"],
-            soma_file=TOY_SOMA,
-            foreign_shl_file=TOY_SHL,
-            foreign_slt_file=TOY_SLT,
-            bank_constraint_file=TOY_BANK_CONSTRAINTS,
-            series_catalog=FULL_CATALOG,
-            sector_defs=FULL_SECTOR_DEFS,
-            model_config="configs/model_defaults.yaml",
-            series_config="configs/h15_series.yaml",
-            bank_constraints_config="configs/bank_constraints.yaml",
-            summary_json_out=out_dir / "full_coverage_summary.json",
-        )
-        raise AssertionError("expected the full-coverage builder to fail when required-sector estimates remain missing")
-    except ValueError as exc:
-        assert "required_sector_estimates_complete" in str(exc)
+    builder(
+        out_dir=out_dir,
+        source_provider="fed",
+        coverage_scope="full",
+        z1_file=TOY_Z1,
+        h15_file=TOY_H15,
+        curve_file=[f"tips_real_yield_constant_maturity={TOY_TIPS}"],
+        soma_file=TOY_SOMA,
+        foreign_shl_file=TOY_SHL,
+        foreign_slt_file=TOY_SLT,
+        bank_constraint_file=TOY_BANK_CONSTRAINTS,
+        series_catalog=FULL_CATALOG,
+        sector_defs=FULL_SECTOR_DEFS,
+        model_config="configs/model_defaults.yaml",
+        series_config="configs/h15_series.yaml",
+        bank_constraints_config="configs/bank_constraints.yaml",
+        summary_json_out=out_dir / "full_coverage_summary.json",
+    )
+    canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv")
+    fed_rows = canonical[canonical["sector_key"] == "fed"]
+    assert not fed_rows.empty
+    assert fed_rows["publication_status"].eq("level_present_no_publishable_estimate").all()
 
 
 def test_full_coverage_release_benchmark_builder_does_not_inject_toy_curve_fallbacks(monkeypatch):

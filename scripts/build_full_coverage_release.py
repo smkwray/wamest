@@ -17,7 +17,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Build the full-coverage research release bundle and machine-readable outputs "
-            "(canonical_atomic_sector_maturity.csv, latest_atomic_sector_snapshot.csv, "
+            "(canonical_sector_maturity.csv, latest_sector_snapshot.csv, "
             "high_confidence_sector_maturity.csv, reconciliation_nodes.csv, required_sector_inventory.csv, "
             "full_coverage_report.md, run_manifest.json, full_coverage_summary.json)."
         )
@@ -85,8 +85,8 @@ def main() -> None:
         supplement_missing_z1_levels_from_fred=args.supplement_missing_z1_levels_from_fred,
     )
 
-    print(f"Wrote {artifacts.canonical_atomic_sector_maturity_path}")
-    print(f"Wrote {artifacts.latest_atomic_sector_snapshot_path}")
+    print(f"Wrote {artifacts.canonical_sector_maturity_path}")
+    print(f"Wrote {artifacts.latest_sector_snapshot_path}")
     print(f"Wrote {artifacts.high_confidence_sector_maturity_path}")
     print(f"Wrote {artifacts.reconciliation_nodes_path}")
     print(f"Wrote {artifacts.required_sector_inventory_path}")

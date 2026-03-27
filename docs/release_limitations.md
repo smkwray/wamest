@@ -35,11 +35,11 @@ The separate full-coverage research release path:
 
 - uses the full-scope Fed Z.1 build by default
 - in the standard live workflow, supplements missing required-sector level series from configured FRED mappings when the Fed release only exposes transactions
-- keeps weak sectors in the output with explicit evidence tiering
+- keeps required sector/date rows in the main surface with explicit publication-status labeling
 - allows ragged histories instead of forcing a shared start date
 - may use short-window promotion for selected stronger sectors before falling back to history-preserving carry rows
 - marks carried long-history rows explicitly instead of pretending they are equally observed
-- separates canonical atomic, snapshot, high-confidence, and reconciliation-node artifacts
+- separates canonical, snapshot, high-confidence, and reconciliation-node artifacts
 - does not change the frozen preview path
 
 ## Sector caveats

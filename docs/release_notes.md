@@ -12,7 +12,7 @@ Included in this release:
 - a human-readable markdown report plus machine-readable CSV and manifest outputs
 - an optional machine-readable `public_release_summary.json` companion when explicitly requested
 - a versioned output contract documented in `docs/output_schema.md`
-- an explicit `make release-check` gate that rejects internal/public-surface leakage such as planning docs or internal orchestration references
+- an explicit `make release-check` gate that rejects internal/public-surface leakage such as private workspace files or internal-only references
 - CI for `pytest -q`, the toy smoke pipeline, and the fixed public-preview contract build
 
 Excluded from the stable default path:
@@ -37,12 +37,12 @@ Reference-build stance:
 
 Included in this release path:
 
-- a separate full-coverage release surface for required atomic Z.1 holder sectors
+- a separate full-coverage release surface for required canonical Z.1 holder sectors
 - a full-scope Fed Z.1 default for the sector panel, calibration, and estimation flow
 - configured FRED level supplements for required sectors whose level series are missing from the Fed release zip
 - ragged historical spans where sector source availability differs
 - explicit tiering for weakly identified sectors instead of dropping them from output
-- a canonical atomic panel, a latest common-quarter snapshot, a high-confidence subset, and reconciliation-node output
+- a canonical panel, a latest common-quarter snapshot, a high-confidence subset, and reconciliation-node output
 - short-window promotion for selected stronger sectors before history-preserving backfill is used
 - explicit `history_preserving_backfill` flags plus reconciliation diagnostics for formula and parent/child rollups
 - coverage-honest reporting and validation that remain separate from the frozen public-preview contract

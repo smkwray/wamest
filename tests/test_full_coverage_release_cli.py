@@ -72,8 +72,8 @@ def test_full_coverage_release_cli_builds_expected_artifacts(tmp_path):
     assert "required_sector_inventory.csv" in completed.stdout
 
     for name in [
-        "canonical_atomic_sector_maturity.csv",
-        "latest_atomic_sector_snapshot.csv",
+        "canonical_sector_maturity.csv",
+        "latest_sector_snapshot.csv",
         "high_confidence_sector_maturity.csv",
         "reconciliation_nodes.csv",
         "required_sector_inventory.csv",

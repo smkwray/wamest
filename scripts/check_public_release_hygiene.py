@@ -34,6 +34,13 @@ FORBIDDEN_TRACKED_PATH_PATTERNS = [
     re.compile(r"(^|/).*\.plan\.md$"),
     re.compile(r"^plans/"),
 ]
+FORBIDDEN_AI_TOOL_WORDS = [
+    "".join(["Co", "dex"]),
+    "".join(["Clau", "de"]),
+    "".join(["G", "PT"]),
+    "".join(["Open", "AI"]),
+    "".join(["Anth", "ropic"]),
+]
 PUBLIC_TEXT_FILES = [
     "README.md",
     "LICENSE",
@@ -57,6 +64,10 @@ FORBIDDEN_TEXT_PATTERNS = [
     (re.compile(r"/Users/[^/\s]+/"), "public files must not embed workstation-specific absolute paths"),
     (re.compile(r"/home/[^/\s]+/"), "public files must not embed workstation-specific absolute paths"),
 ]
+FORBIDDEN_TEXT_PATTERNS.extend(
+    (re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE), "public files must not mention internal AI tools")
+    for name in FORBIDDEN_AI_TOOL_WORDS
+)
 
 
 def _public_text_paths() -> list[Path]:

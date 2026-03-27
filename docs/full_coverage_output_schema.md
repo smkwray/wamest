@@ -4,7 +4,7 @@ This document defines the artifact contract for the separate `v0.2` full-coverag
 
 ## Scope
 
-The full-coverage path is a separate release surface for quarterly maturity estimation across the required atomic Z.1 holder sectors. The standard live workflow uses the full-scope Fed Z.1 build plus configured `fred_ids.level` supplements for missing required-sector level series, and keeps weakly identified sectors in the output with explicit tiering instead of dropping them.
+The full-coverage path is a separate release surface for quarterly maturity estimation across the required canonical Z.1 holder sectors. The standard live workflow uses the full-scope Fed Z.1 build plus configured `fred_ids.level` supplements for missing required-sector level series, and keeps required sector/date rows in the main surface with explicit `publication_status` semantics instead of dropping them.
 
 Canonical entrypoints:
 
@@ -14,17 +14,17 @@ Canonical entrypoints:
 
 The release is designed for:
 
-- full holder coverage across required atomic sectors
+- full holder coverage across required canonical sectors
 - ragged historical spans where source availability differs by sector
-- explicit separation between atomic sectors, reconciliation nodes, and high-confidence subsets
+- explicit separation between required canonical sectors, non-canonical reconciliation nodes, and high-confidence subsets
 - coverage-honest reporting rather than preview-minimal reporting
 
 ## Required artifacts
 
 The full-coverage release writes these top-level artifacts:
 
-1. `canonical_atomic_sector_maturity.csv`
-2. `latest_atomic_sector_snapshot.csv`
+1. `canonical_sector_maturity.csv`
+2. `latest_sector_snapshot.csv`
 3. `high_confidence_sector_maturity.csv`
 4. `reconciliation_nodes.csv`
 5. `fed_exact_overlay.csv`
@@ -33,36 +33,38 @@ The full-coverage release writes these top-level artifacts:
 8. `run_manifest.json`
 9. `full_coverage_summary.json`
 
-## Canonical atomic panel
+## Canonical panel
 
-`canonical_atomic_sector_maturity.csv` is the main historical artifact.
+`canonical_sector_maturity.csv` is the main historical artifact.
 
 Rules:
 
-- contains one row per `node_type == atomic` sector/date combination in the full-coverage release scope
-- includes weak sectors and partially identified sectors
+- contains one row per required canonical sector/date combination in the full-coverage release scope
+- preserves each sector's actual `node_type`, including `atomic`, `proxy`, and `residual`
+- includes weak sectors, partially identified sectors, and explicit status rows for sector/date combinations that lack a publishable maturity estimate
 - allows ragged histories when some sectors start later than others
-- excludes non-atomic reconciliation or roll-up nodes
+- excludes non-canonical reconciliation or roll-up nodes
 - retains the core maturity fields used in the preview path, and extends them with direct composition metrics, calibrated interval bands, and explicit measurement-basis fields
 - includes `history_preserving_backfill` so leading warmup rows filled from the nearest available sector estimate remain explicit and easy to filter
-- may include `release_window_override` rows where selected stronger sectors were estimated with a shorter window before any carry-style backfill was used
+- includes `publication_status` and `publication_status_reason` so every required row is explicit about whether it is a published estimate, a history-preserving backfill row, or a status-only row
+- distinguishes `row_is_short_window_estimate` from `estimate_origin_includes_short_window_promotion`
 
 Expected interpretation:
 
 - point estimates are the best available estimates under the public-data stack
 - calibrated uncertainty bands communicate uncertainty and weak identification
 - `effective_duration_years` is only populated when a distinct duration map is actually supplied; otherwise `effective_duration_status` records that the metric is not separately estimated
-- missing early history for a sector is allowed only when the sector has no feasible public estimate for those dates
+- status-only rows are acceptable when a sector/date lacks a publishable maturity estimate under the current public-data stack
 - the canonical panel preserves the longest feasible history for each sector and is not truncated to the latest common quarter
 
 ## Latest snapshot
 
-`latest_atomic_sector_snapshot.csv` is the quarter-aligned snapshot artifact.
+`latest_sector_snapshot.csv` is the quarter-aligned snapshot artifact.
 
 Rules:
 
-- one row per required atomic sector with non-null level history in the release build
-- the snapshot quarter is the latest quarter shared across those covered required atomic sectors
+- one row per required canonical sector whose feasible publication range reaches the resolved quarter
+- the snapshot quarter is the latest quarter shared across required canonical sectors in the release build
 - the row for each sector is taken from that common quarter
 - sectors without a row at the resolved common quarter fail validation
 - this artifact is a common-quarter cross-section companion to the canonical panel, not the canonical panel's history definition
@@ -75,16 +77,16 @@ Rules:
 
 - contains only Fed rows with `sector_key == fed`
 - is built from the already-produced quarterly SOMA exact metrics used during Fed calibration
-- does not replace the canonical Fed row in `canonical_atomic_sector_maturity.csv`
+- does not replace the canonical Fed row in `canonical_sector_maturity.csv`
 - exists to expose the direct security-level Fed benchmark alongside the cross-sector-comparable inferred canonical panel
 
 ## High-confidence subset
 
-`high_confidence_sector_maturity.csv` is a filtered view of the canonical atomic panel.
+`high_confidence_sector_maturity.csv` is a filtered view of the canonical panel.
 
 Rules:
 
-- exact row filter of the canonical atomic panel where `high_confidence_flag == true`
+- exact row filter of the canonical panel where `high_confidence_flag == true`
 - no re-estimation or separate contract
 - may be empty for a date if no sector meets the high-confidence threshold
 
@@ -94,17 +96,17 @@ Rules:
 
 Rules:
 
-- contains only non-atomic nodes
-- may include rollups, residual nodes, proxies, and discrepancy objects
-- exists to support transparency and hierarchy checks, not to expand the atomic panel
+- contains only non-canonical nodes
+- may include rollups, auxiliaries, and discrepancy objects
+- exists to support transparency and hierarchy checks, not to expand the canonical panel
 
 ## Required sector inventory
 
-`required_sector_inventory.csv` is the machine-readable planning and audit artifact for the full-coverage surface.
+`required_sector_inventory.csv` is the machine-readable audit artifact for the full-coverage surface.
 
 Rules:
 
-- contains one row per required atomic sector
+- contains one row per required canonical sector
 - records the configured level / transactions / revaluation / bills source codes and any configured `fred_ids` fallbacks for each required sector where applicable
 - records whether those configured source codes are present in the parsed Z.1 source file used for the release
 - records whether the configured level code becomes available after the optional FRED level supplement used by the live full-coverage path
@@ -113,17 +115,18 @@ Rules:
 - records the configured method-priority stack from `configs/sector_definitions_full.yaml`
 - records whether a sector has a direct `bills_series`
 - records whether the sector is explicitly eligible for release-window promotion in `configs/coverage_registry.yaml`
-- records the feasible history span, underlying level/transactions/revaluation row availability, and emitted `history_preserving_backfill` / `release_window_override` usage from the canonical artifact
+- records the feasible history span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and latest publication status from the canonical artifact
 - records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest emitted level path was supplemented from FRED
 
 ## Validation semantics
 
 The full-coverage release should validate the following:
 
-- every required atomic sector appears in the canonical atomic panel for every date where that sector has a non-null full-scope level
-- the latest snapshot quarter is the minimum of the per-sector latest available dates across required atomic sectors with non-null level history in the build
-- the high-confidence subset is a strict filter of the canonical atomic panel
-- reconciliation nodes do not leak into the canonical atomic artifact
+- every required canonical sector appears in the canonical panel for every date in its feasible publication range
+- every required canonical sector/date row carries a non-null `publication_status`
+- the latest snapshot quarter is the minimum of the per-sector latest available dates across required canonical sectors in the build
+- the high-confidence subset is a strict filter of the canonical panel
+- reconciliation nodes do not leak into the canonical artifact
 - preview validation remains separate and unchanged
 
 ## Required summary content
@@ -138,8 +141,8 @@ The full-coverage release should validate the following:
 - required-sector inventory artifact path and row count
 - weakest-sector summary keyed by evidence tier, concept risk, and estimand class
 - high-confidence subset counts and sector list
-- validation results covering row presence, non-null required-sector estimate coverage, and bounded estimate-coverage ratios
-- row-level provenance fields including `level_source_provider_used`, `level_supplemented_from_fred`, `point_estimate_origin`, `interval_origin`, and `effective_duration_status`
+- validation results covering row presence, explicit publication-status coverage, and bounded published-estimate coverage ratios
+- row-level provenance fields including `level_source_provider_used`, `level_supplemented_from_fred`, `point_estimate_origin`, `interval_origin`, `effective_duration_status`, `publication_status`, `row_is_short_window_estimate`, and `estimate_origin_includes_short_window_promotion`
 - reconciliation diagnostics for formula nodes and parent/child rollups
 - provenance and source-path summary
 
@@ -149,7 +152,7 @@ Preferred language for the full-coverage release:
 
 - full coverage
 - ragged history
-- required atomic sectors
+- required canonical sectors
 - high-confidence subset
 - weakest sectors
 - reconciliation nodes

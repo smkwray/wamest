@@ -198,8 +198,8 @@ That target stays pinned to the toy input bundle and does not depend on live FRE
 
 Both commands build the separate `v0.2` artifact set under `outputs/full_coverage_release/`:
 
-- `canonical_atomic_sector_maturity.csv`
-- `latest_atomic_sector_snapshot.csv`
+- `canonical_sector_maturity.csv`
+- `latest_sector_snapshot.csv`
 - `high_confidence_sector_maturity.csv`
 - `reconciliation_nodes.csv`
 - `fed_exact_overlay.csv`
@@ -213,11 +213,13 @@ The full-coverage release path:
 - uses `--coverage-scope full`
 - defaults to the Fed Z.1 source path
 - in the standard live workflow, supplements required-sector level series that are missing from the Fed release zip but available through configured FRED mappings
-- keeps weak sectors in the output with explicit tiering
+- builds the main surface across required canonical sectors, including proxy and residual sectors where those are part of the configured full-coverage universe
+- emits explicit `publication_status` rows when a required canonical sector/date lacks a publishable maturity estimate instead of dropping that row from the main artifact
 - allows ragged histories instead of forcing a shared start date
 - preserves the longest feasible sector history in the canonical panel and treats the latest snapshot as a separate common-quarter cross-section
 - uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
 - marks leading warmup carry rows with `history_preserving_backfill`
+- distinguishes row-level short-window estimates from rows whose estimate origin came from short-window promotion
 - exports basis fields, direct composition metrics, and interval bands alongside the headline maturity estimates
 - publishes `fed_exact_overlay.csv` as a direct SOMA companion while keeping the canonical Fed row cross-sector-comparable and inferred
 - writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, and latest provenance fields

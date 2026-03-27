@@ -88,6 +88,14 @@ def canonical_atomic_sector_keys(path: str | Path = DEFAULT_COVERAGE_REGISTRY_PA
     ]
 
 
+def required_canonical_sector_keys(path: str | Path = DEFAULT_COVERAGE_REGISTRY_PATH) -> list[str]:
+    return [
+        key
+        for key, node in load_coverage_registry(path).items()
+        if node.is_canonical and node.required_for_full_coverage
+    ]
+
+
 def required_full_coverage_sector_keys(path: str | Path = DEFAULT_COVERAGE_REGISTRY_PATH) -> list[str]:
     return [
         key

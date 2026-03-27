@@ -2,6 +2,7 @@ from pathlib import Path
 
 from treasury_sector_maturity.coverage import (
     canonical_atomic_sector_keys,
+    required_canonical_sector_keys,
     required_full_coverage_sector_keys,
 )
 from treasury_sector_maturity.utils import load_yaml
@@ -14,10 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_full_coverage_sector_definitions_cover_required_registry_nodes():
     registry_required = set(required_full_coverage_sector_keys(ROOT / "configs" / "coverage_registry.yaml"))
     registry_atomic = set(canonical_atomic_sector_keys(ROOT / "configs" / "coverage_registry.yaml"))
+    registry_required_canonical = set(required_canonical_sector_keys(ROOT / "configs" / "coverage_registry.yaml"))
     defs = load_yaml(ROOT / "configs" / "sector_definitions_full.yaml").get("sectors", {})
 
     assert registry_required.issubset(defs)
     assert registry_atomic.issubset(defs)
+    assert registry_required_canonical.issubset(defs)
 
 
 def test_full_coverage_sector_definitions_reference_known_series_or_formulas():

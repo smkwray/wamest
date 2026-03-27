@@ -15,9 +15,8 @@ from .calibration import (
     summarize_interval_calibration,
 )
 from .coverage import (
-    canonical_atomic_sector_keys,
     load_coverage_registry,
-    required_full_coverage_sector_keys,
+    required_canonical_sector_keys,
     resolve_estimation_scope,
     resolve_fed_calibration_scope,
     resolve_z1_build_scope,
@@ -74,6 +73,8 @@ ESTIMATE_METADATA_COLUMNS = [
     "estimator_family",
     "selection_reason",
     "high_confidence_flag",
+    "estimate_origin_includes_short_window_promotion",
+    "short_window_promotion_quarters",
     "level_evidence_tier",
     "maturity_evidence_tier",
     "level_measurement_basis",
@@ -91,8 +92,8 @@ ESTIMATE_METADATA_COLUMNS = [
 
 @dataclass(frozen=True)
 class FullCoverageReleaseArtifacts:
-    canonical_atomic_sector_maturity_path: Path
-    latest_atomic_sector_snapshot_path: Path
+    canonical_sector_maturity_path: Path
+    latest_sector_snapshot_path: Path
     high_confidence_sector_maturity_path: Path
     reconciliation_nodes_path: Path
     fed_exact_overlay_path: Path
@@ -146,8 +147,8 @@ def build_full_coverage_release(
     out_dir.mkdir(parents=True, exist_ok=True)
     summary_json_path = Path(summary_json_out) if summary_json_out is not None else out_dir / "full_coverage_summary.json"
     report_path = out_dir / "full_coverage_report.md"
-    canonical_path = out_dir / "canonical_atomic_sector_maturity.csv"
-    latest_path = out_dir / "latest_atomic_sector_snapshot.csv"
+    canonical_path = out_dir / "canonical_sector_maturity.csv"
+    latest_path = out_dir / "latest_sector_snapshot.csv"
     high_confidence_path = out_dir / "high_confidence_sector_maturity.csv"
     reconciliation_path = out_dir / "reconciliation_nodes.csv"
     fed_exact_overlay_path = out_dir / "fed_exact_overlay.csv"
@@ -274,36 +275,30 @@ def build_full_coverage_release(
     write_table(estimated, intermediate_artifacts["sector_effective_maturity"])
 
     registry_path = DEFAULT_REGISTRY_PATH
-    registry_keys = set(canonical_atomic_sector_keys(registry_path))
-    required_keys = set(required_full_coverage_sector_keys(registry_path))
-    required_atomic = sorted(registry_keys & required_keys)
+    required_canonical = required_canonical_sector_keys(registry_path)
 
-    atomic_panel = _sort_release_frame(
-        sector_panel[
-            sector_panel["node_type"].astype(str).eq("atomic")
-            & sector_panel["level"].notna()
-        ].copy()
+    canonical = _annotate_publication_status(
+        _apply_history_preserving_backfill(
+            _build_required_canonical_panel(
+                sector_panel=sector_panel,
+                estimated=estimated,
+                required_canonical=required_canonical,
+            )
+        )
     )
-    estimated_overlay = estimated.drop(
-        columns=[col for col in atomic_panel.columns if col in estimated.columns and col not in {"date", "sector_key"}],
-        errors="ignore",
-    )
-    canonical_atomic = _apply_history_preserving_backfill(
-        _sort_release_frame(atomic_panel.merge(estimated_overlay, on=["date", "sector_key"], how="left"))
-    )
-    latest_quarter = _resolve_latest_snapshot_quarter(sector_panel, required_atomic)
-    latest_required_sectors = _latest_required_sector_keys(sector_panel, required_atomic, latest_quarter)
+    latest_quarter = _resolve_latest_snapshot_quarter(sector_panel, required_canonical)
+    latest_required_sectors = _latest_required_sector_keys(sector_panel, required_canonical, latest_quarter)
     if latest_quarter is not None:
-        latest_atomic = canonical_atomic[
-            canonical_atomic["date"].eq(latest_quarter)
-            & canonical_atomic["sector_key"].astype(str).isin(latest_required_sectors)
+        latest = canonical[
+            canonical["date"].eq(latest_quarter)
+            & canonical["sector_key"].astype(str).isin(latest_required_sectors)
         ].copy()
     else:
-        latest_atomic = canonical_atomic.iloc[0:0].copy()
-    high_confidence = canonical_atomic[canonical_atomic["high_confidence_flag"].fillna(False)].copy()
-    reconciliation = estimated[estimated["node_type"].astype(str).ne("atomic")].copy()
+        latest = canonical.iloc[0:0].copy()
+    high_confidence = canonical[canonical["high_confidence_flag"].fillna(False)].copy()
+    reconciliation = estimated[~estimated["is_canonical"].fillna(False)].copy()
 
-    for frame in (canonical_atomic, latest_atomic, high_confidence, reconciliation):
+    for frame in (canonical, latest, high_confidence, reconciliation):
         if "warnings" in frame.columns:
             frame.drop(columns=["warnings"], inplace=True)
     export_columns = [
@@ -319,8 +314,11 @@ def build_full_coverage_release(
         "selection_reason",
         "high_confidence_flag",
         "history_preserving_backfill",
-        "release_window_override",
-        "release_window_override_quarters",
+        "publication_status",
+        "publication_status_reason",
+        "row_is_short_window_estimate",
+        "estimate_origin_includes_short_window_promotion",
+        "short_window_promotion_quarters",
         "level_evidence_tier",
         "maturity_evidence_tier",
         "level_measurement_basis",
@@ -352,13 +350,13 @@ def build_full_coverage_release(
         "zero_coupon_equivalent_years_lower",
         "zero_coupon_equivalent_years_upper",
     ]
-    canonical_export = _project_columns(canonical_atomic, export_columns)
-    latest_export = _project_columns(latest_atomic, export_columns)
+    canonical_export = _project_columns(canonical, export_columns)
+    latest_export = _project_columns(latest, export_columns)
     high_confidence_export = _project_columns(high_confidence, export_columns)
     reconciliation_export = _project_columns(reconciliation, export_columns)
     fed_exact_overlay = _build_fed_exact_overlay(fed_exact_metrics)
     required_sector_inventory = _build_required_sector_inventory(
-        canonical_atomic=canonical_atomic,
+        canonical=canonical,
         sector_panel=sector_panel,
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
@@ -376,8 +374,8 @@ def build_full_coverage_release(
     write_table(required_sector_inventory, required_inventory_path)
 
     release_summary = _build_release_summary(
-        canonical_atomic=canonical_atomic,
-        latest_atomic=latest_atomic,
+        canonical=canonical,
+        latest=latest,
         high_confidence=high_confidence,
         requested_end_date=end_date,
         resolved_latest_snapshot_date=None if latest_quarter is None else pd.Timestamp(latest_quarter).date().isoformat(),
@@ -392,24 +390,24 @@ def build_full_coverage_release(
         reconciliation=reconciliation,
         required_sector_inventory=required_sector_inventory,
     )
-    history_spans = _build_history_spans(canonical_atomic, sector_panel)
-    coverage_completeness = _build_coverage_completeness(canonical_atomic, sector_panel, required_atomic)
-    weakest_sectors = _build_weakest_sectors(canonical_atomic, sector_panel)
+    history_spans = _build_history_spans(canonical, sector_panel, required_canonical)
+    coverage_completeness = _build_coverage_completeness(canonical, sector_panel, required_canonical)
+    weakest_sectors = _build_weakest_sectors(canonical, sector_panel)
     reconciliation_diagnostics = _build_reconciliation_diagnostics(
         sector_panel=sector_panel,
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
     )
-    latest_snapshot_summary = _build_latest_snapshot_summary(latest_atomic, latest_quarter)
+    latest_snapshot_summary = _build_latest_snapshot_summary(latest, latest_quarter)
     fed_exact_overlay_summary = _build_fed_exact_overlay_summary(fed_exact_overlay)
-    history_backfill_summary = _build_history_backfill_summary(canonical_atomic)
+    history_backfill_summary = _build_history_backfill_summary(canonical)
     validation = _build_validation_summary(
-        canonical_atomic=canonical_atomic,
-        latest_atomic=latest_atomic,
+        canonical=canonical,
+        latest=latest,
         high_confidence=high_confidence,
         sector_panel=sector_panel,
         coverage_completeness=coverage_completeness,
-        required_atomic=required_atomic,
+        required_canonical=required_canonical,
         latest_quarter=latest_quarter,
         latest_required_sectors=latest_required_sectors,
         reconciliation=reconciliation,
@@ -442,8 +440,8 @@ def build_full_coverage_release(
         "validation": validation,
         "provenance": provenance,
         "machine_readable_outputs": {
-            "canonical_atomic_sector_maturity": str(canonical_path),
-            "latest_atomic_sector_snapshot": str(latest_path),
+            "canonical_sector_maturity": str(canonical_path),
+            "latest_sector_snapshot": str(latest_path),
             "high_confidence_sector_maturity": str(high_confidence_path),
             "reconciliation_nodes": str(reconciliation_path),
             "fed_exact_overlay": str(fed_exact_overlay_path),
@@ -477,8 +475,8 @@ def build_full_coverage_release(
         "source_artifact_paths": dict(source_artifacts),
         "intermediate_artifact_paths": dict(intermediate_artifacts),
         "output_paths": {
-            "canonical_atomic_sector_maturity": str(canonical_path),
-            "latest_atomic_sector_snapshot": str(latest_path),
+            "canonical_sector_maturity": str(canonical_path),
+            "latest_sector_snapshot": str(latest_path),
             "high_confidence_sector_maturity": str(high_confidence_path),
             "reconciliation_nodes": str(reconciliation_path),
             "fed_exact_overlay": str(fed_exact_overlay_path),
@@ -504,8 +502,8 @@ def build_full_coverage_release(
         reconciliation_diagnostics=reconciliation_diagnostics,
         validation=validation,
         provenance=provenance,
-        canonical_atomic=canonical_atomic,
-        latest_atomic=latest_atomic,
+        canonical=canonical,
+        latest=latest,
         high_confidence_path=high_confidence_path,
         canonical_path=canonical_path,
         latest_path=latest_path,
@@ -519,8 +517,8 @@ def build_full_coverage_release(
     report_path.write_text(report, encoding="utf-8")
 
     return FullCoverageReleaseArtifacts(
-        canonical_atomic_sector_maturity_path=canonical_path,
-        latest_atomic_sector_snapshot_path=latest_path,
+        canonical_sector_maturity_path=canonical_path,
+        latest_sector_snapshot_path=latest_path,
         high_confidence_sector_maturity_path=high_confidence_path,
         reconciliation_nodes_path=reconciliation_path,
         fed_exact_overlay_path=fed_exact_overlay_path,
@@ -924,8 +922,9 @@ def _merge_promoted_release_estimates(
     promotion_window_quarters: int,
 ) -> pd.DataFrame:
     out = estimated.copy()
-    out["release_window_override"] = False
-    out["release_window_override_quarters"] = pd.NA
+    out["row_is_short_window_estimate"] = False
+    out["estimate_origin_includes_short_window_promotion"] = False
+    out["short_window_promotion_quarters"] = pd.NA
 
     promoted_sectors = _select_promoted_release_sectors(
         sector_panel=sector_panel,
@@ -952,8 +951,9 @@ def _merge_promoted_release_estimates(
         return out
 
     promoted = promoted.copy()
-    promoted["release_window_override"] = True
-    promoted["release_window_override_quarters"] = promotion_window_quarters
+    promoted["row_is_short_window_estimate"] = True
+    promoted["estimate_origin_includes_short_window_promotion"] = True
+    promoted["short_window_promotion_quarters"] = promotion_window_quarters
     promoted["date"] = pd.to_datetime(promoted["date"], errors="coerce")
     out["date"] = pd.to_datetime(out["date"], errors="coerce")
 
@@ -1085,11 +1085,54 @@ def _load_bank_institution_files(
     return pd.concat(frames, ignore_index=True, sort=False)
 
 
-def _resolve_latest_snapshot_quarter(sector_panel: pd.DataFrame, required_atomic: list[str]) -> pd.Timestamp | None:
+def _build_required_canonical_panel(
+    *,
+    sector_panel: pd.DataFrame,
+    estimated: pd.DataFrame,
+    required_canonical: list[str],
+) -> pd.DataFrame:
+    base = _sort_release_frame(
+        sector_panel[sector_panel["sector_key"].astype(str).isin(required_canonical)].copy()
+    )
+    estimated_overlay = estimated.drop(
+        columns=[col for col in base.columns if col in estimated.columns and col not in {"date", "sector_key"}],
+        errors="ignore",
+    )
+    return _sort_release_frame(base.merge(estimated_overlay, on=["date", "sector_key"], how="left"))
+
+
+def _annotate_publication_status(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    if out.empty:
+        out["publication_status"] = pd.Series(dtype=str)
+        out["publication_status_reason"] = pd.Series(dtype=str)
+        return out
+
+    has_estimate = _has_published_estimate(out)
+    has_level = out["level"].notna() if "level" in out.columns else pd.Series(False, index=out.index)
+    is_backfill = out["history_preserving_backfill"].fillna(False) if "history_preserving_backfill" in out.columns else pd.Series(False, index=out.index)
+
+    out["publication_status"] = "status_only_no_level_or_estimate"
+    out.loc[has_level, "publication_status"] = "level_present_no_publishable_estimate"
+    out.loc[has_estimate, "publication_status"] = "published_estimate"
+    out.loc[is_backfill & has_estimate, "publication_status"] = "history_preserving_backfill"
+
+    out["publication_status_reason"] = out["publication_status"].map(
+        {
+            "history_preserving_backfill": "Carried nearest available sector estimate into a leading warmup gap.",
+            "published_estimate": "Published best-available sector estimate for this quarter.",
+            "level_present_no_publishable_estimate": "Sector has a level row but no publishable maturity estimate for this quarter.",
+            "status_only_no_level_or_estimate": "Sector has neither a public level row nor a publishable maturity estimate for this quarter.",
+        }
+    )
+    return out
+
+
+def _resolve_latest_snapshot_quarter(sector_panel: pd.DataFrame, required_canonical: list[str]) -> pd.Timestamp | None:
     frame = sector_panel.copy()
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     subset = frame[
-        frame["sector_key"].isin(required_atomic) & frame["level"].notna()
+        frame["sector_key"].isin(required_canonical)
     ][["sector_key", "date"]].dropna()
     if subset.empty:
         return None
@@ -1101,7 +1144,7 @@ def _resolve_latest_snapshot_quarter(sector_panel: pd.DataFrame, required_atomic
 
 def _latest_required_sector_keys(
     sector_panel: pd.DataFrame,
-    required_atomic: list[str],
+    required_canonical: list[str],
     latest_quarter: pd.Timestamp | None,
 ) -> set[str]:
     if latest_quarter is None:
@@ -1109,16 +1152,16 @@ def _latest_required_sector_keys(
     frame = sector_panel.copy()
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
     covered = frame[
-        frame["sector_key"].isin(required_atomic)
-        & frame["level"].notna()
+        frame["sector_key"].isin(required_canonical)
+        & frame["date"].eq(pd.Timestamp(latest_quarter))
     ]["sector_key"].dropna().astype(str).unique().tolist()
     return set(covered)
 
 
 def _build_release_summary(
     *,
-    canonical_atomic: pd.DataFrame,
-    latest_atomic: pd.DataFrame,
+    canonical: pd.DataFrame,
+    latest: pd.DataFrame,
     high_confidence: pd.DataFrame,
     requested_end_date: str | None,
     resolved_latest_snapshot_date: str | None,
@@ -1133,20 +1176,21 @@ def _build_release_summary(
     reconciliation: pd.DataFrame,
     required_sector_inventory: pd.DataFrame,
 ) -> dict[str, Any]:
-    date_range = _date_range(canonical_atomic)
+    date_range = _date_range(canonical)
     return {
         "coverage_scope": coverage_scope,
         "source_provider_requested": source_provider,
         "requested_end_date": requested_end_date or "",
         "resolved_latest_snapshot_date": resolved_latest_snapshot_date or (date_range[1] or ""),
         "quarters": quarters,
-        "canonical_row_count": int(len(canonical_atomic)),
-        "latest_snapshot_row_count": int(len(latest_atomic)),
+        "canonical_row_count": int(len(canonical)),
+        "latest_snapshot_row_count": int(len(latest)),
         "high_confidence_row_count": int(len(high_confidence)),
         "reconciliation_row_count": int(len(reconciliation)),
         "required_sector_inventory_row_count": int(len(required_sector_inventory)),
-        "history_preserving_backfill_rows": int(canonical_atomic["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in canonical_atomic.columns else 0,
-        "release_window_override_rows": int(canonical_atomic["release_window_override"].fillna(False).sum()) if "release_window_override" in canonical_atomic.columns else 0,
+        "history_preserving_backfill_rows": int(canonical["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in canonical.columns else 0,
+        "short_window_estimate_rows": int(canonical["row_is_short_window_estimate"].fillna(False).sum()) if "row_is_short_window_estimate" in canonical.columns else 0,
+        "short_window_origin_rows": int(canonical["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if "estimate_origin_includes_short_window_promotion" in canonical.columns else 0,
         "date_start": date_range[0],
         "date_end": date_range[1],
         "model_config_path": str(model_config_path),
@@ -1154,14 +1198,19 @@ def _build_release_summary(
         "sector_defs_path": str(sector_defs),
         "series_catalog_path": str(series_catalog),
         "summary_json_out": str(summary_json_out),
-    }
+}
 
 
-def _build_history_spans(canonical_atomic: pd.DataFrame, sector_panel: pd.DataFrame) -> list[dict[str, Any]]:
+def _build_history_spans(
+    canonical: pd.DataFrame,
+    sector_panel: pd.DataFrame,
+    required_canonical: list[str],
+) -> list[dict[str, Any]]:
     registry = sector_panel.drop_duplicates("sector_key").set_index("sector_key")
     out: list[dict[str, Any]] = []
-    for sector_key, sub in canonical_atomic.groupby("sector_key", sort=True):
-        sector_rows = sector_panel[(sector_panel["sector_key"] == sector_key) & sector_panel["level"].notna()].copy()
+    required_set = set(required_canonical)
+    for sector_key, sub in canonical.groupby("sector_key", sort=True):
+        sector_rows = sector_panel[sector_panel["sector_key"] == sector_key].copy()
         history_start = None if sector_rows.empty else pd.Timestamp(sector_rows["date"].min()).date().isoformat()
         history_end = None if sector_rows.empty else pd.Timestamp(sector_rows["date"].max()).date().isoformat()
         row0 = sub.iloc[0]
@@ -1176,15 +1225,17 @@ def _build_history_spans(canonical_atomic: pd.DataFrame, sector_panel: pd.DataFr
                 "required_for_full_coverage": bool(row0.get("required_for_full_coverage", False)),
                 "concept_risk": _as_text(row0.get("concept_risk")),
                 "estimand_class": _as_text(row0.get("estimand_class")),
+                "publication_status": _single_or_mixed(sub.get("publication_status")),
                 "high_confidence_flag": bool(sub["high_confidence_flag"].fillna(False).any()),
                 "history_start_reason": _as_text(row0.get("history_start_reason")),
                 "history_preserving_backfill_rows": int(sub["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in sub.columns else 0,
-                "release_window_override_rows": int(sub["release_window_override"].fillna(False).sum()) if "release_window_override" in sub.columns else 0,
+                "short_window_estimate_rows": int(sub["row_is_short_window_estimate"].fillna(False).sum()) if "row_is_short_window_estimate" in sub.columns else 0,
+                "short_window_origin_rows": int(sub["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if "estimate_origin_includes_short_window_promotion" in sub.columns else 0,
             }
         )
 
     for sector_key, row in registry.iterrows():
-        if str(row.get("node_type")) != "atomic" or sector_key in set(canonical_atomic["sector_key"].astype(str)):
+        if sector_key not in required_set or sector_key in set(canonical["sector_key"].astype(str)):
             continue
         out.append(
             {
@@ -1197,10 +1248,12 @@ def _build_history_spans(canonical_atomic: pd.DataFrame, sector_panel: pd.DataFr
                 "required_for_full_coverage": bool(row.get("required_for_full_coverage", False)),
                 "concept_risk": _as_text(row.get("concept_risk")),
                 "estimand_class": None,
+                "publication_status": None,
                 "high_confidence_flag": False,
                 "history_start_reason": _as_text(row.get("history_start_reason")),
                 "history_preserving_backfill_rows": 0,
-                "release_window_override_rows": 0,
+                "short_window_estimate_rows": 0,
+                "short_window_origin_rows": 0,
             }
         )
 
@@ -1208,44 +1261,49 @@ def _build_history_spans(canonical_atomic: pd.DataFrame, sector_panel: pd.DataFr
 
 
 def _build_coverage_completeness(
-    canonical_atomic: pd.DataFrame,
+    canonical: pd.DataFrame,
     sector_panel: pd.DataFrame,
-    required_atomic: list[str],
+    required_canonical: list[str],
 ) -> dict[str, Any]:
-    canonical_keys = set(canonical_atomic["sector_key"].astype(str).dropna())
-    required_set = set(required_atomic)
+    canonical_keys = set(canonical["sector_key"].astype(str).dropna())
+    required_set = set(required_canonical)
     missing = sorted(required_set - canonical_keys)
-    sector_frame = sector_panel[sector_panel["sector_key"].isin(required_set) & sector_panel["level"].notna()].copy()
-    estimate_rows = canonical_atomic[
-        canonical_atomic["sector_key"].isin(required_set)
-        & _has_published_estimate(canonical_atomic)
+    sector_frame = sector_panel[sector_panel["sector_key"].isin(required_set)].copy()
+    estimate_rows = canonical[
+        canonical["sector_key"].isin(required_set)
+        & _has_published_estimate(canonical)
+    ][["date", "sector_key"]].drop_duplicates()
+    publication_rows = canonical[
+        canonical["sector_key"].isin(required_set)
+        & canonical["publication_status"].notna()
     ][["date", "sector_key"]].drop_duplicates()
     required_rows = sector_frame[["date", "sector_key"]].drop_duplicates()
-    missing_estimate_rows = required_rows.merge(
-        estimate_rows,
+    missing_publication_rows = required_rows.merge(
+        publication_rows,
         on=["date", "sector_key"],
         how="left",
         indicator=True,
     )
-    missing_estimate_rows = missing_estimate_rows[missing_estimate_rows["_merge"] != "both"]
+    missing_publication_rows = missing_publication_rows[missing_publication_rows["_merge"] != "both"]
     return {
-        "required_atomic_total": int(len(required_set)),
-        "required_atomic_covered": int(len(required_set) - len(missing)),
+        "required_canonical_total": int(len(required_set)),
+        "required_canonical_covered": int(len(required_set) - len(missing)),
         "required_row_count": int(len(sector_frame)),
         "coverage_ratio": 0.0 if not required_set else float((len(required_set) - len(missing)) / len(required_set)),
         "missing_required_sectors": missing,
         "required_sector_rows": int(len(sector_frame)),
         "required_rows_with_estimates": int(len(estimate_rows)),
-        "required_estimate_coverage_ratio": (
+        "required_rows_with_publication_status": int(len(publication_rows)),
+        "published_estimate_coverage_ratio": (
             0.0 if len(required_rows) == 0 else float(len(estimate_rows) / len(required_rows))
         ),
-        "missing_required_estimate_rows": int(len(missing_estimate_rows)),
+        "missing_required_publication_rows": int(len(missing_publication_rows)),
     }
 
 
 def _build_required_sector_inventory(
     *,
-    canonical_atomic: pd.DataFrame,
+    canonical: pd.DataFrame,
     sector_panel: pd.DataFrame,
     sector_definitions: dict[str, Any],
     coverage_registry: dict[str, Any],
@@ -1256,7 +1314,7 @@ def _build_required_sector_inventory(
     rows: list[dict[str, Any]] = []
     canonical_groups = {
         str(sector_key): sub.copy()
-        for sector_key, sub in canonical_atomic.groupby("sector_key", sort=True)
+        for sector_key, sub in canonical.groupby("sector_key", sort=True)
     }
     sector_panel = sector_panel.copy()
     sector_panel["date"] = pd.to_datetime(sector_panel["date"], errors="coerce")
@@ -1264,7 +1322,7 @@ def _build_required_sector_inventory(
     available_codes = set(long_df["series_code"].dropna().astype(str)) if "series_code" in long_df.columns else set()
 
     for sector_key, node in sorted(coverage_registry.items()):
-        if not (node.required_for_full_coverage and node.node_type == "atomic"):
+        if not (node.required_for_full_coverage and node.is_canonical):
             continue
         sector_spec = dict(sector_definitions.get(sector_key) or {})
         level_series_key = _as_text(sector_spec.get("level_series"))
@@ -1289,7 +1347,7 @@ def _build_required_sector_inventory(
         sector_rows_all = sector_panel[
             sector_panel["sector_key"].astype(str).eq(sector_key)
         ].copy()
-        history_rows = sector_rows_all[sector_rows_all["level"].notna()].copy()
+        history_rows = sector_rows_all.copy()
         canonical_rows = canonical_groups.get(sector_key, pd.DataFrame())
         date_start = None if history_rows.empty else pd.Timestamp(history_rows["date"].min()).date().isoformat()
         date_end = None if history_rows.empty else pd.Timestamp(history_rows["date"].max()).date().isoformat()
@@ -1299,6 +1357,8 @@ def _build_required_sector_inventory(
         latest_level_supplemented_from_fred = False
         latest_point_estimate_origin = None
         latest_interval_origin = None
+        latest_publication_status = None
+        latest_publication_status_reason = None
         if not canonical_rows.empty:
             latest_row = canonical_rows.sort_values("date").iloc[-1]
             latest_estimand_class = _as_text(latest_row.get("estimand_class"))
@@ -1307,6 +1367,8 @@ def _build_required_sector_inventory(
             latest_level_supplemented_from_fred = bool(latest_row.get("level_supplemented_from_fred", False))
             latest_point_estimate_origin = _as_text(latest_row.get("point_estimate_origin"))
             latest_interval_origin = _as_text(latest_row.get("interval_origin"))
+            latest_publication_status = _as_text(latest_row.get("publication_status"))
+            latest_publication_status_reason = _as_text(latest_row.get("publication_status_reason"))
         rows.append(
             {
                 "sector_key": sector_key,
@@ -1355,15 +1417,19 @@ def _build_required_sector_inventory(
                 "history_row_count": int(len(history_rows)),
                 "canonical_row_count": int(len(canonical_rows)),
                 "history_preserving_backfill_rows": int(canonical_rows["history_preserving_backfill"].fillna(False).sum()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else 0,
-                "release_window_override_rows": int(canonical_rows["release_window_override"].fillna(False).sum()) if not canonical_rows.empty and "release_window_override" in canonical_rows.columns else 0,
+                "short_window_estimate_rows": int(canonical_rows["row_is_short_window_estimate"].fillna(False).sum()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else 0,
+                "short_window_origin_rows": int(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else 0,
                 "currently_backfilled": bool(canonical_rows["history_preserving_backfill"].fillna(False).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
-                "currently_window_promoted": bool(canonical_rows["release_window_override"].fillna(False).any()) if not canonical_rows.empty and "release_window_override" in canonical_rows.columns else False,
+                "currently_short_window_estimated": bool(canonical_rows["row_is_short_window_estimate"].fillna(False).any()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else False,
+                "currently_short_window_origin": bool(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).any()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else False,
                 "latest_estimand_class": latest_estimand_class,
                 "latest_estimator_family": latest_estimator_family,
                 "latest_level_source_provider_used": latest_level_source_provider_used,
                 "latest_level_supplemented_from_fred": latest_level_supplemented_from_fred,
                 "latest_point_estimate_origin": latest_point_estimate_origin,
                 "latest_interval_origin": latest_interval_origin,
+                "latest_publication_status": latest_publication_status,
+                "latest_publication_status_reason": latest_publication_status_reason,
             }
         )
 
@@ -1431,22 +1497,24 @@ def _build_source_series_audit(required_sector_inventory: pd.DataFrame) -> dict[
     }
 
 
-def _build_weakest_sectors(canonical_atomic: pd.DataFrame, sector_panel: pd.DataFrame) -> list[dict[str, Any]]:
+def _build_weakest_sectors(canonical: pd.DataFrame, sector_panel: pd.DataFrame) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for sector_key, sub in canonical_atomic.groupby("sector_key", sort=True):
+    for sector_key, sub in canonical.groupby("sector_key", sort=True):
         row0 = sub.iloc[0]
-        sector_rows = sector_panel[(sector_panel["sector_key"] == sector_key) & sector_panel["level"].notna()]
+        sector_rows = sector_panel[sector_panel["sector_key"] == sector_key]
         records.append(
             {
                 "sector_key": str(sector_key),
                 "node_type": _as_text(row0.get("node_type")),
                 "concept_risk": _as_text(row0.get("concept_risk")),
                 "estimand_class": _as_text(row0.get("estimand_class")),
+                "publication_status": _single_or_mixed(sub.get("publication_status")),
                 "level_evidence_tier": _as_text(row0.get("level_evidence_tier")),
                 "maturity_evidence_tier": _as_text(row0.get("maturity_evidence_tier")),
                 "high_confidence_flag": bool(sub["high_confidence_flag"].fillna(False).any()),
                 "history_preserving_backfill": bool(sub["history_preserving_backfill"].fillna(False).any()),
-                "release_window_override": bool(sub["release_window_override"].fillna(False).any()) if "release_window_override" in sub.columns else False,
+                "row_is_short_window_estimate": bool(sub["row_is_short_window_estimate"].fillna(False).any()) if "row_is_short_window_estimate" in sub.columns else False,
+                "estimate_origin_includes_short_window_promotion": bool(sub["estimate_origin_includes_short_window_promotion"].fillna(False).any()) if "estimate_origin_includes_short_window_promotion" in sub.columns else False,
                 "date_start": None if sector_rows.empty else pd.Timestamp(sector_rows["date"].min()).date().isoformat(),
                 "date_end": None if sector_rows.empty else pd.Timestamp(sector_rows["date"].max()).date().isoformat(),
                 "rows": int(len(sub)),
@@ -1462,45 +1530,51 @@ def _build_weakest_sectors(canonical_atomic: pd.DataFrame, sector_panel: pd.Data
             item["level_evidence_tier"] or "",
             item["concept_risk"] or "",
             not item["history_preserving_backfill"],
-            not item["release_window_override"],
+            not item["estimate_origin_includes_short_window_promotion"],
             item["sector_key"],
         ),
     )
 
 
-def _build_latest_snapshot_summary(latest_atomic: pd.DataFrame, latest_quarter: pd.Timestamp | None) -> dict[str, Any]:
-    if latest_atomic.empty or latest_quarter is None:
+def _build_latest_snapshot_summary(latest: pd.DataFrame, latest_quarter: pd.Timestamp | None) -> dict[str, Any]:
+    if latest.empty or latest_quarter is None:
         return {
             "latest_common_quarter": None,
             "row_count": 0,
             "high_confidence_rows": 0,
             "history_preserving_backfill_rows": 0,
-            "release_window_override_rows": 0,
+            "short_window_estimate_rows": 0,
+            "short_window_origin_rows": 0,
             "sector_keys": [],
         }
     return {
         "latest_common_quarter": pd.Timestamp(latest_quarter).date().isoformat(),
-        "row_count": int(len(latest_atomic)),
-        "high_confidence_rows": int(latest_atomic["high_confidence_flag"].fillna(False).sum()),
-        "history_preserving_backfill_rows": int(latest_atomic["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in latest_atomic.columns else 0,
-        "release_window_override_rows": int(latest_atomic["release_window_override"].fillna(False).sum()) if "release_window_override" in latest_atomic.columns else 0,
-        "sector_keys": sorted(latest_atomic["sector_key"].dropna().astype(str).unique()),
+        "row_count": int(len(latest)),
+        "high_confidence_rows": int(latest["high_confidence_flag"].fillna(False).sum()),
+        "history_preserving_backfill_rows": int(latest["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in latest.columns else 0,
+        "short_window_estimate_rows": int(latest["row_is_short_window_estimate"].fillna(False).sum()) if "row_is_short_window_estimate" in latest.columns else 0,
+        "short_window_origin_rows": int(latest["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if "estimate_origin_includes_short_window_promotion" in latest.columns else 0,
+        "sector_keys": sorted(latest["sector_key"].dropna().astype(str).unique()),
     }
 
 
-def _build_history_backfill_summary(canonical_atomic: pd.DataFrame) -> dict[str, Any]:
-    if canonical_atomic.empty:
+def _build_history_backfill_summary(canonical: pd.DataFrame) -> dict[str, Any]:
+    if canonical.empty:
         return {
             "history_preserving_backfill_rows": 0,
-            "release_window_override_rows": 0,
+            "short_window_estimate_rows": 0,
+            "short_window_origin_rows": 0,
             "sectors_with_backfill": [],
-            "sectors_with_window_override": [],
+            "sectors_with_short_window_estimate": [],
+            "sectors_with_short_window_origin": [],
         }
     return {
-        "history_preserving_backfill_rows": int(canonical_atomic["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in canonical_atomic.columns else 0,
-        "release_window_override_rows": int(canonical_atomic["release_window_override"].fillna(False).sum()) if "release_window_override" in canonical_atomic.columns else 0,
-        "sectors_with_backfill": sorted(canonical_atomic.loc[canonical_atomic["history_preserving_backfill"].fillna(False), "sector_key"].dropna().astype(str).unique()) if "history_preserving_backfill" in canonical_atomic.columns else [],
-        "sectors_with_window_override": sorted(canonical_atomic.loc[canonical_atomic["release_window_override"].fillna(False), "sector_key"].dropna().astype(str).unique()) if "release_window_override" in canonical_atomic.columns else [],
+        "history_preserving_backfill_rows": int(canonical["history_preserving_backfill"].fillna(False).sum()) if "history_preserving_backfill" in canonical.columns else 0,
+        "short_window_estimate_rows": int(canonical["row_is_short_window_estimate"].fillna(False).sum()) if "row_is_short_window_estimate" in canonical.columns else 0,
+        "short_window_origin_rows": int(canonical["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if "estimate_origin_includes_short_window_promotion" in canonical.columns else 0,
+        "sectors_with_backfill": sorted(canonical.loc[canonical["history_preserving_backfill"].fillna(False), "sector_key"].dropna().astype(str).unique()) if "history_preserving_backfill" in canonical.columns else [],
+        "sectors_with_short_window_estimate": sorted(canonical.loc[canonical["row_is_short_window_estimate"].fillna(False), "sector_key"].dropna().astype(str).unique()) if "row_is_short_window_estimate" in canonical.columns else [],
+        "sectors_with_short_window_origin": sorted(canonical.loc[canonical["estimate_origin_includes_short_window_promotion"].fillna(False), "sector_key"].dropna().astype(str).unique()) if "estimate_origin_includes_short_window_promotion" in canonical.columns else [],
     }
 
 
@@ -1577,71 +1651,71 @@ def _build_reconciliation_diagnostics(
 
 def _build_validation_summary(
     *,
-    canonical_atomic: pd.DataFrame,
-    latest_atomic: pd.DataFrame,
+    canonical: pd.DataFrame,
+    latest: pd.DataFrame,
     high_confidence: pd.DataFrame,
     sector_panel: pd.DataFrame,
     coverage_completeness: dict[str, Any],
-    required_atomic: list[str],
+    required_canonical: list[str],
     latest_quarter: pd.Timestamp | None,
     latest_required_sectors: set[str],
     reconciliation: pd.DataFrame,
     reconciliation_diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    canonical_only = bool(canonical_atomic["node_type"].astype(str).eq("atomic").all()) if not canonical_atomic.empty else True
-    reconciliation_only = bool(reconciliation["node_type"].astype(str).ne("atomic").all()) if not reconciliation.empty else True
+    canonical_required_only = bool(canonical["required_for_full_coverage"].fillna(False).all()) if not canonical.empty else True
+    reconciliation_noncanonical_only = bool((~reconciliation["is_canonical"].fillna(False)).all()) if not reconciliation.empty else True
     high_confidence_match = True
     if not high_confidence.empty:
-        filtered = canonical_atomic[canonical_atomic["high_confidence_flag"].fillna(False)].copy()
+        filtered = canonical[canonical["high_confidence_flag"].fillna(False)].copy()
         high_confidence_match = _frames_equal(filtered, high_confidence)
-    canonical_unique_pairs = len(canonical_atomic[["date", "sector_key"]].drop_duplicates()) == len(canonical_atomic)
-    latest_unique_pairs = len(latest_atomic[["date", "sector_key"]].drop_duplicates()) == len(latest_atomic)
-    required_rows = sector_panel[sector_panel["sector_key"].isin(required_atomic) & sector_panel["level"].notna()]
-    canonical_pairs = set(zip(canonical_atomic["date"].astype(str), canonical_atomic["sector_key"].astype(str)))
+    canonical_unique_pairs = len(canonical[["date", "sector_key"]].drop_duplicates()) == len(canonical)
+    latest_unique_pairs = len(latest[["date", "sector_key"]].drop_duplicates()) == len(latest)
+    required_rows = sector_panel[sector_panel["sector_key"].isin(required_canonical)]
+    canonical_pairs = set(zip(canonical["date"].astype(str), canonical["sector_key"].astype(str)))
     required_pairs = set(zip(required_rows["date"].astype(str), required_rows["sector_key"].astype(str)))
     required_coverage = required_pairs.issubset(canonical_pairs)
-    required_estimate_rows = canonical_atomic[
-        canonical_atomic["sector_key"].isin(required_atomic)
-        & _has_published_estimate(canonical_atomic)
+    published_status_rows = canonical[
+        canonical["sector_key"].isin(required_canonical)
+        & canonical["publication_status"].notna()
     ][["date", "sector_key"]].drop_duplicates()
-    required_estimate_pairs = set(zip(required_estimate_rows["date"].astype(str), required_estimate_rows["sector_key"].astype(str)))
-    required_estimates_complete = required_pairs.issubset(required_estimate_pairs)
-    required_estimate_ratio = float(coverage_completeness.get("required_estimate_coverage_ratio", 0.0))
-    required_estimate_ratio_bounded = 0.0 <= required_estimate_ratio <= 1.0
+    published_status_pairs = set(zip(published_status_rows["date"].astype(str), published_status_rows["sector_key"].astype(str)))
+    required_publication_complete = required_pairs.issubset(published_status_pairs)
+    published_estimate_ratio = float(coverage_completeness.get("published_estimate_coverage_ratio", 0.0))
+    published_estimate_ratio_bounded = 0.0 <= published_estimate_ratio <= 1.0
     latest_matches = True
     if latest_quarter is not None:
         latest_matches = (
-            latest_atomic["date"].nunique() == 1
-            and bool(pd.Timestamp(latest_atomic["date"].iloc[0]).normalize() == pd.Timestamp(latest_quarter).normalize())
-            and set(latest_atomic["sector_key"].astype(str)) == set(latest_required_sectors)
+            latest["date"].nunique() == 1
+            and bool(pd.Timestamp(latest["date"].iloc[0]).normalize() == pd.Timestamp(latest_quarter).normalize())
+            and set(latest["sector_key"].astype(str)) == set(latest_required_sectors)
         )
     reconciliation_diagnostics = reconciliation_diagnostics or {}
     formula_reconciliation_passes = int(reconciliation_diagnostics.get("formula_rows_failing", 0)) == 0
     parent_child_reconciliation_passes = int(reconciliation_diagnostics.get("parent_rows_failing", 0)) == 0
     checks = [
         {
-            "check": "canonical_atomic_only",
-            "status": "pass" if canonical_only else "fail",
+            "check": "canonical_required_only",
+            "status": "pass" if canonical_required_only else "fail",
             "hard_failure": True,
-            "details": "Canonical atomic artifact contains only atomic nodes." if canonical_only else "Canonical atomic artifact contains at least one non-atomic node.",
+            "details": "Canonical artifact contains only required canonical sectors." if canonical_required_only else "Canonical artifact contains at least one non-required or non-canonical sector row.",
         },
         {
-            "check": "reconciliation_nodes_only_non_atomic",
-            "status": "pass" if reconciliation_only else "fail",
+            "check": "reconciliation_nodes_only_noncanonical",
+            "status": "pass" if reconciliation_noncanonical_only else "fail",
             "hard_failure": True,
-            "details": "Reconciliation artifact contains only non-atomic nodes." if reconciliation_only else "Reconciliation artifact contains at least one atomic node.",
+            "details": "Reconciliation artifact contains only non-canonical nodes." if reconciliation_noncanonical_only else "Reconciliation artifact contains at least one canonical node.",
         },
         {
             "check": "high_confidence_is_filtered_subset",
             "status": "pass" if high_confidence_match else "fail",
             "hard_failure": True,
-            "details": "High-confidence artifact is an exact filter of the canonical atomic artifact." if high_confidence_match else "High-confidence artifact diverges from the canonical atomic filter.",
+            "details": "High-confidence artifact is an exact filter of the canonical artifact." if high_confidence_match else "High-confidence artifact diverges from the canonical filter.",
         },
         {
-            "check": "canonical_atomic_sector_dates_unique",
+            "check": "canonical_sector_dates_unique",
             "status": "pass" if canonical_unique_pairs else "fail",
             "hard_failure": True,
-            "details": "Canonical atomic artifact has at most one row per sector/date." if canonical_unique_pairs else "Canonical atomic artifact contains duplicate sector/date rows.",
+            "details": "Canonical artifact has at most one row per sector/date." if canonical_unique_pairs else "Canonical artifact contains duplicate sector/date rows.",
         },
         {
             "check": "latest_snapshot_sector_dates_unique",
@@ -1653,19 +1727,19 @@ def _build_validation_summary(
             "check": "required_sector_coverage_complete",
             "status": "pass" if required_coverage else "fail",
             "hard_failure": True,
-            "details": "Every required sector/date row with non-null level appears in the canonical atomic artifact." if required_coverage else "At least one required sector/date row with non-null level is missing from the canonical atomic artifact.",
+            "details": "Every required canonical sector/date row appears in the canonical artifact." if required_coverage else "At least one required canonical sector/date row is missing from the canonical artifact.",
         },
         {
-            "check": "required_sector_estimates_complete",
-            "status": "pass" if required_estimates_complete else "fail",
+            "check": "required_sector_publication_complete",
+            "status": "pass" if required_publication_complete else "fail",
             "hard_failure": True,
-            "details": "Every required sector/date row with non-null level has a published estimate." if required_estimates_complete else "At least one required sector/date row is present but still lacks all published estimate fields.",
+            "details": "Every required sector/date row has an explicit publication status." if required_publication_complete else "At least one required sector/date row lacks a publication status.",
         },
         {
-            "check": "required_estimate_coverage_ratio_bounded",
-            "status": "pass" if required_estimate_ratio_bounded else "fail",
+            "check": "published_estimate_coverage_ratio_bounded",
+            "status": "pass" if published_estimate_ratio_bounded else "fail",
             "hard_failure": True,
-            "details": "Required-estimate coverage ratio stays within [0, 1]." if required_estimate_ratio_bounded else "Required-estimate coverage ratio fell outside [0, 1], which indicates inconsistent artifact accounting.",
+            "details": "Published-estimate coverage ratio stays within [0, 1]." if published_estimate_ratio_bounded else "Published-estimate coverage ratio fell outside [0, 1], which indicates inconsistent artifact accounting.",
         },
         {
             "check": "latest_snapshot_matches_required_rows",
@@ -1688,14 +1762,14 @@ def _build_validation_summary(
     ]
     overall = all(check["status"] == "pass" for check in checks)
     return {
-        "canonical_atomic_only": canonical_only,
-        "reconciliation_nodes_only_non_atomic": reconciliation_only,
+        "canonical_required_only": canonical_required_only,
+        "reconciliation_nodes_only_noncanonical": reconciliation_noncanonical_only,
         "high_confidence_is_filtered_subset": high_confidence_match,
-        "canonical_atomic_sector_dates_unique": canonical_unique_pairs,
+        "canonical_sector_dates_unique": canonical_unique_pairs,
         "latest_snapshot_sector_dates_unique": latest_unique_pairs,
         "required_sector_coverage_complete": required_coverage,
-        "required_sector_estimates_complete": required_estimates_complete,
-        "required_estimate_coverage_ratio_bounded": required_estimate_ratio_bounded,
+        "required_sector_publication_complete": required_publication_complete,
+        "published_estimate_coverage_ratio_bounded": published_estimate_ratio_bounded,
         "latest_snapshot_matches_required_rows": latest_matches,
         "formula_reconciliation_passes": formula_reconciliation_passes,
         "parent_child_reconciliation_passes": parent_child_reconciliation_passes,
@@ -1854,8 +1928,8 @@ def _render_release_report(
     reconciliation_diagnostics: dict[str, Any],
     validation: dict[str, Any],
     provenance: dict[str, Any],
-    canonical_atomic: pd.DataFrame,
-    latest_atomic: pd.DataFrame,
+    canonical: pd.DataFrame,
+    latest: pd.DataFrame,
     high_confidence_path: Path,
     canonical_path: Path,
     latest_path: Path,
@@ -1884,7 +1958,8 @@ def _render_release_report(
                 f"Reconciliation rows: `{release_summary['reconciliation_row_count']}`",
                 f"Required inventory rows: `{release_summary['required_sector_inventory_row_count']}`",
                 f"History-preserving backfill rows: `{release_summary['history_preserving_backfill_rows']}`",
-                f"Short-window promoted rows: `{release_summary['release_window_override_rows']}`",
+                f"Short-window estimate rows: `{release_summary['short_window_estimate_rows']}`",
+                f"Short-window origin rows: `{release_summary['short_window_origin_rows']}`",
             ]
         ),
         "",
@@ -1896,14 +1971,15 @@ def _render_release_report(
                 f"Snapshot row count: `{latest_snapshot_summary['row_count']}`",
                 f"Snapshot high-confidence rows: `{latest_snapshot_summary['high_confidence_rows']}`",
                 f"Snapshot history-preserving backfill rows: `{latest_snapshot_summary['history_preserving_backfill_rows']}`",
-                f"Snapshot short-window promoted rows: `{latest_snapshot_summary['release_window_override_rows']}`",
+                f"Snapshot short-window estimate rows: `{latest_snapshot_summary['short_window_estimate_rows']}`",
+                f"Snapshot short-window origin rows: `{latest_snapshot_summary['short_window_origin_rows']}`",
                 "This snapshot is a separate common-quarter cross-section, not the definition of the canonical history span.",
             ]
         ),
         "",
         _render_markdown_table(
-            _summarize_frame(latest_atomic, ["sector_key", "date", "high_confidence_flag", "history_preserving_backfill", "release_window_override"]),
-            columns=["sector_key", "date", "high_confidence_flag", "history_preserving_backfill", "release_window_override"],
+            _summarize_frame(latest, ["sector_key", "date", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"]),
+            columns=["sector_key", "date", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"],
         ),
         "",
         "## Fed Exact Overlay",
@@ -1914,7 +1990,7 @@ def _render_release_report(
                 f"Rows: `{fed_exact_overlay_summary['row_count']}`",
                 f"Date start: `{fed_exact_overlay_summary['date_start']}`",
                 f"Date end: `{fed_exact_overlay_summary['date_end']}`",
-                "This artifact is the direct SOMA-based Fed companion. The canonical `fed` row in `canonical_atomic_sector_maturity.csv` remains the cross-sector-comparable inferred series.",
+                "This artifact is the direct SOMA-based Fed companion. The canonical `fed` row in `canonical_sector_maturity.csv` remains the cross-sector-comparable inferred series.",
             ]
         ),
         "",
@@ -1926,13 +2002,14 @@ def _render_release_report(
         "## Coverage Completeness",
         "",
         _render_markdown_table([coverage_completeness], columns=[
-            "required_atomic_total",
-            "required_atomic_covered",
+            "required_canonical_total",
+            "required_canonical_covered",
             "required_row_count",
             "coverage_ratio",
             "required_rows_with_estimates",
-            "required_estimate_coverage_ratio",
-            "missing_required_estimate_rows",
+            "required_rows_with_publication_status",
+            "published_estimate_coverage_ratio",
+            "missing_required_publication_rows",
             "missing_required_sectors",
         ]),
         "",
@@ -1969,7 +2046,7 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Artifact: `{required_inventory_path}`",
-                "Inventory tracks raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, latest backfill/promotion usage, and latest provenance fields for every required atomic sector.",
+                "Inventory tracks raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, latest backfill/promotion usage, publication status, and latest provenance fields for every required canonical sector.",
             ]
         ),
         "",
@@ -1987,7 +2064,9 @@ def _render_release_report(
             "transactions_rows_available",
             "revaluation_rows_available",
             "history_preserving_backfill_rows",
-            "release_window_override_rows",
+            "short_window_estimate_rows",
+            "short_window_origin_rows",
+            "latest_publication_status",
             "latest_level_source_provider_used",
             "latest_level_supplemented_from_fred",
             "latest_point_estimate_origin",
@@ -1999,9 +2078,11 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Backfilled rows: `{history_backfill_summary['history_preserving_backfill_rows']}`",
-                f"Short-window promoted rows: `{history_backfill_summary['release_window_override_rows']}`",
+                f"Short-window estimate rows: `{history_backfill_summary['short_window_estimate_rows']}`",
+                f"Short-window origin rows: `{history_backfill_summary['short_window_origin_rows']}`",
                 f"Sectors with backfill: `{', '.join(history_backfill_summary['sectors_with_backfill']) or 'none'}`",
-                f"Sectors with short-window promotion: `{', '.join(history_backfill_summary['sectors_with_window_override']) or 'none'}`",
+                f"Sectors with short-window estimates: `{', '.join(history_backfill_summary['sectors_with_short_window_estimate']) or 'none'}`",
+                f"Sectors with short-window origins: `{', '.join(history_backfill_summary['sectors_with_short_window_origin']) or 'none'}`",
             ]
         ),
         "",
@@ -2017,9 +2098,11 @@ def _render_release_report(
             "required_for_full_coverage",
             "concept_risk",
             "estimand_class",
+            "publication_status",
             "high_confidence_flag",
             "history_preserving_backfill_rows",
-            "release_window_override_rows",
+            "short_window_estimate_rows",
+            "short_window_origin_rows",
         ]),
         "",
         "## High-Confidence Subset",
@@ -2028,7 +2111,7 @@ def _render_release_report(
             [
                 f"Rows: `{len(high_confidence)}`",
                 f"Artifact: `{high_confidence_path}`",
-                f"Derived from canonical atomic panel: `{canonical_path}`",
+                f"Derived from canonical panel: `{canonical_path}`",
             ]
         ),
         "",
@@ -2044,11 +2127,13 @@ def _render_release_report(
             "node_type",
             "concept_risk",
             "estimand_class",
+            "publication_status",
             "level_evidence_tier",
             "maturity_evidence_tier",
             "high_confidence_flag",
             "history_preserving_backfill",
-            "release_window_override",
+            "row_is_short_window_estimate",
+            "estimate_origin_includes_short_window_promotion",
             "date_start",
             "date_end",
         ]),
@@ -2069,14 +2154,14 @@ def _render_release_report(
         "## Validation",
         "",
         _render_markdown_table([validation], columns=[
-            "canonical_atomic_only",
-            "reconciliation_nodes_only_non_atomic",
+            "canonical_required_only",
+            "reconciliation_nodes_only_noncanonical",
             "high_confidence_is_filtered_subset",
-            "canonical_atomic_sector_dates_unique",
+            "canonical_sector_dates_unique",
             "latest_snapshot_sector_dates_unique",
             "required_sector_coverage_complete",
-            "required_sector_estimates_complete",
-            "required_estimate_coverage_ratio_bounded",
+            "required_sector_publication_complete",
+            "published_estimate_coverage_ratio_bounded",
             "latest_snapshot_matches_required_rows",
             "formula_reconciliation_passes",
             "parent_child_reconciliation_passes",
@@ -2088,8 +2173,8 @@ def _render_release_report(
         _render_markdown_table(
             [
                 {
-                    "canonical_atomic_sector_maturity": str(canonical_path),
-                    "latest_atomic_sector_snapshot": str(latest_path),
+                    "canonical_sector_maturity": str(canonical_path),
+                    "latest_sector_snapshot": str(latest_path),
                     "high_confidence_sector_maturity": str(high_confidence_path),
                     "reconciliation_nodes": str(reconciliation_path),
                     "fed_exact_overlay": str(fed_exact_overlay_path),
@@ -2099,8 +2184,8 @@ def _render_release_report(
                 }
             ],
             columns=[
-                "canonical_atomic_sector_maturity",
-                "latest_atomic_sector_snapshot",
+                "canonical_sector_maturity",
+                "latest_sector_snapshot",
                 "high_confidence_sector_maturity",
                 "reconciliation_nodes",
                 "fed_exact_overlay",
@@ -2156,7 +2241,13 @@ def _project_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     for column in columns:
         if column not in subset.columns:
             subset[column] = pd.NA
-    for column in ["required_for_full_coverage", "high_confidence_flag", "history_preserving_backfill", "release_window_override"]:
+    for column in [
+        "required_for_full_coverage",
+        "high_confidence_flag",
+        "history_preserving_backfill",
+        "row_is_short_window_estimate",
+        "estimate_origin_includes_short_window_promotion",
+    ]:
         if column in subset.columns:
             subset[column] = subset[column].fillna(False).astype(bool)
     return subset[columns].copy()
