@@ -1430,6 +1430,37 @@ def _build_required_sector_inventory(
     raw_long_df: pd.DataFrame,
     long_df: pd.DataFrame,
 ) -> pd.DataFrame:
+    def _latest_row_fields(prefix: str, row: pd.Series | None) -> dict[str, Any]:
+        if row is None:
+            return {
+                f"{prefix}_date": None,
+                f"{prefix}_backfilled": False,
+                f"{prefix}_short_window_estimated": False,
+                f"{prefix}_short_window_origin": False,
+                f"{prefix}_estimand_class": None,
+                f"{prefix}_estimator_family": None,
+                f"{prefix}_level_source_provider_used": None,
+                f"{prefix}_level_supplemented_from_fred": False,
+                f"{prefix}_point_estimate_origin": None,
+                f"{prefix}_interval_origin": None,
+                f"{prefix}_publication_status": None,
+                f"{prefix}_publication_status_reason": None,
+            }
+        return {
+            f"{prefix}_date": _date_or_none(row.get("date")),
+            f"{prefix}_backfilled": bool(row.get("history_preserving_backfill", False)),
+            f"{prefix}_short_window_estimated": bool(row.get("row_is_short_window_estimate", False)),
+            f"{prefix}_short_window_origin": bool(row.get("estimate_origin_includes_short_window_promotion", False)),
+            f"{prefix}_estimand_class": _as_text(row.get("estimand_class")),
+            f"{prefix}_estimator_family": _as_text(row.get("estimator_family")),
+            f"{prefix}_level_source_provider_used": _as_text(row.get("level_source_provider_used")),
+            f"{prefix}_level_supplemented_from_fred": bool(row.get("level_supplemented_from_fred", False)),
+            f"{prefix}_point_estimate_origin": _as_text(row.get("point_estimate_origin")),
+            f"{prefix}_interval_origin": _as_text(row.get("interval_origin")),
+            f"{prefix}_publication_status": _as_text(row.get("publication_status")),
+            f"{prefix}_publication_status_reason": _as_text(row.get("publication_status_reason")),
+        }
+
     rows: list[dict[str, Any]] = []
     canonical_groups = {
         str(sector_key): sub.copy()
@@ -1476,24 +1507,17 @@ def _build_required_sector_inventory(
         canonical_rows = canonical_groups.get(sector_key, pd.DataFrame())
         date_start = _as_text(range_row.get("first_publication_date"))
         date_end = _as_text(range_row.get("latest_publication_date"))
-        latest_estimand_class = None
-        latest_estimator_family = None
-        latest_level_source_provider_used = None
-        latest_level_supplemented_from_fred = False
-        latest_point_estimate_origin = None
-        latest_interval_origin = None
-        latest_publication_status = None
-        latest_publication_status_reason = None
+        latest_emitted_row = None
+        latest_published_row = None
         if not canonical_rows.empty:
-            latest_row = canonical_rows.sort_values("date").iloc[-1]
-            latest_estimand_class = _as_text(latest_row.get("estimand_class"))
-            latest_estimator_family = _as_text(latest_row.get("estimator_family"))
-            latest_level_source_provider_used = _as_text(latest_row.get("level_source_provider_used"))
-            latest_level_supplemented_from_fred = bool(latest_row.get("level_supplemented_from_fred", False))
-            latest_point_estimate_origin = _as_text(latest_row.get("point_estimate_origin"))
-            latest_interval_origin = _as_text(latest_row.get("interval_origin"))
-            latest_publication_status = _as_text(latest_row.get("publication_status"))
-            latest_publication_status_reason = _as_text(latest_row.get("publication_status_reason"))
+            canonical_rows = canonical_rows.sort_values("date").reset_index(drop=True)
+            latest_emitted_row = canonical_rows.iloc[-1]
+            if "in_publication_range" in canonical_rows.columns:
+                published_rows = canonical_rows[canonical_rows["in_publication_range"].fillna(False)]
+                if not published_rows.empty:
+                    latest_published_row = published_rows.sort_values("date").iloc[-1]
+        latest_emitted_fields = _latest_row_fields("latest_emitted", latest_emitted_row)
+        latest_published_fields = _latest_row_fields("latest_published", latest_published_row)
         rows.append(
             {
                 "sector_key": sector_key,
@@ -1548,17 +1572,11 @@ def _build_required_sector_inventory(
                 "history_preserving_backfill_rows": int(canonical_rows["history_preserving_backfill"].fillna(False).sum()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else 0,
                 "short_window_estimate_rows": int(canonical_rows["row_is_short_window_estimate"].fillna(False).sum()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else 0,
                 "short_window_origin_rows": int(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else 0,
-                "currently_backfilled": bool(canonical_rows["history_preserving_backfill"].fillna(False).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
-                "currently_short_window_estimated": bool(canonical_rows["row_is_short_window_estimate"].fillna(False).any()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else False,
-                "currently_short_window_origin": bool(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).any()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else False,
-                "latest_estimand_class": latest_estimand_class,
-                "latest_estimator_family": latest_estimator_family,
-                "latest_level_source_provider_used": latest_level_source_provider_used,
-                "latest_level_supplemented_from_fred": latest_level_supplemented_from_fred,
-                "latest_point_estimate_origin": latest_point_estimate_origin,
-                "latest_interval_origin": latest_interval_origin,
-                "latest_publication_status": latest_publication_status,
-                "latest_publication_status_reason": latest_publication_status_reason,
+                "ever_backfilled": bool(canonical_rows["history_preserving_backfill"].fillna(False).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
+                "ever_short_window_estimated": bool(canonical_rows["row_is_short_window_estimate"].fillna(False).any()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else False,
+                "ever_short_window_origin": bool(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).any()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else False,
+                **latest_emitted_fields,
+                **latest_published_fields,
             }
         )
 
@@ -2183,7 +2201,7 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Artifact: `{required_inventory_path}`",
-                "Inventory tracks raw parsed-source availability, post-supplement level availability, explicit level and publication-range endpoints, latest backfill/promotion usage, publication status, and latest provenance fields for every required canonical sector.",
+                "Inventory tracks raw parsed-source availability, post-supplement level availability, explicit level and publication-range endpoints, historical ever-used backfill/promotion flags, plus separate latest-emitted and latest-published provenance fields for every required canonical sector.",
             ]
         ),
         "",
@@ -2207,11 +2225,15 @@ def _render_release_report(
             "history_preserving_backfill_rows",
             "short_window_estimate_rows",
             "short_window_origin_rows",
-            "latest_publication_status",
-            "latest_level_source_provider_used",
-            "latest_level_supplemented_from_fred",
-            "latest_point_estimate_origin",
-            "latest_interval_origin",
+            "ever_backfilled",
+            "ever_short_window_estimated",
+            "ever_short_window_origin",
+            "latest_emitted_publication_status",
+            "latest_published_publication_status",
+            "latest_published_level_source_provider_used",
+            "latest_published_level_supplemented_from_fred",
+            "latest_published_point_estimate_origin",
+            "latest_published_interval_origin",
         ]),
         "",
         "## History-Preserving Backfill",

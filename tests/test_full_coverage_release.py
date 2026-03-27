@@ -280,15 +280,22 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         "post_supplement_level_code_present",
         "post_supplement_level_status",
         "same_base_source_codes",
-        "latest_level_source_provider_used",
-        "latest_level_supplemented_from_fred",
-        "latest_point_estimate_origin",
-        "latest_interval_origin",
+        "ever_backfilled",
+        "ever_short_window_estimated",
+        "ever_short_window_origin",
+        "latest_emitted_date",
+        "latest_published_date",
+        "latest_emitted_publication_status",
+        "latest_published_publication_status",
+        "latest_published_level_source_provider_used",
+        "latest_published_level_supplemented_from_fred",
+        "latest_published_point_estimate_origin",
+        "latest_published_interval_origin",
     }.issubset(inventory.columns)
     fed_inventory = inventory[inventory["sector_key"] == "fed"].iloc[0]
     assert fed_inventory["source_level_status"] == "present"
     assert isinstance(fed_inventory["level_fred_id"], str) and fed_inventory["level_fred_id"]
-    assert fed_inventory["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
+    assert fed_inventory["latest_published_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     life_inventory = inventory[inventory["sector_key"] == "life_insurers"].iloc[0]
     assert life_inventory["source_level_status"] == "absent"
     promoted_inventory = inventory[inventory["short_window_origin_rows"] > 0]
@@ -594,7 +601,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
     supplemented_inventory = inventory[inventory["sector_key"].isin(supplemented)]
     assert not supplemented_inventory["source_level_code_present"].any()
     assert supplemented_inventory["post_supplement_level_code_present"].all()
-    assert supplemented_inventory["latest_level_supplemented_from_fred"].all()
+    assert supplemented_inventory["latest_published_level_supplemented_from_fred"].all()
     assert summary["source_series_audit"]["post_supplement_level_present_count"] > summary["source_series_audit"]["source_level_present_count"]
 
 
@@ -670,7 +677,7 @@ def test_build_fed_calibration_passes_factor_returns_through(monkeypatch, tmp_pa
     pd.testing.assert_frame_equal(captured["interval_factor_returns"], factor_benchmark)
 
 
-def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
+def test_required_sector_inventory_splits_latest_emitted_from_latest_published_fields():
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
     inventory_builder = getattr(module, "_build_required_sector_inventory")
 
@@ -680,29 +687,30 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
 
     canonical = pd.DataFrame(
         {
-            "date": pd.to_datetime(["2025-09-30", "2025-12-31"]),
-            "sector_key": ["fed", "fed"],
-            "estimand_class": ["old_estimand", "new_estimand"],
-            "estimator_family": ["old_family", "new_family"],
-            "level_source_provider_used": ["fed_z1", "fred_level_supplement"],
-            "level_supplemented_from_fred": [False, True],
-            "point_estimate_origin": ["rolling_benchmark_weights", "rolling_benchmark_weights_plus_factors"],
-            "interval_origin": ["old_interval", "new_interval"],
-            "publication_status": ["published_estimate", "published_estimate"],
-            "publication_status_reason": ["old", "new"],
-            "history_preserving_backfill": [False, False],
-            "row_is_short_window_estimate": [False, False],
-            "estimate_origin_includes_short_window_promotion": [False, False],
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31", "2026-03-31"]),
+            "sector_key": ["fed", "fed", "fed"],
+            "estimand_class": ["old_estimand", "new_estimand", "terminal_estimand"],
+            "estimator_family": ["old_family", "new_family", "terminal_family"],
+            "level_source_provider_used": ["fed_z1", "fred_level_supplement", "fed_z1"],
+            "level_supplemented_from_fred": [False, True, False],
+            "point_estimate_origin": ["rolling_benchmark_weights", "rolling_benchmark_weights_plus_factors", "terminal_origin"],
+            "interval_origin": ["old_interval", "new_interval", "terminal_interval"],
+            "publication_status": ["published_estimate", "published_estimate", "status_only_no_level_or_estimate"],
+            "publication_status_reason": ["old", "new", "terminal"],
+            "history_preserving_backfill": [False, True, False],
+            "row_is_short_window_estimate": [False, False, True],
+            "estimate_origin_includes_short_window_promotion": [False, True, True],
+            "in_publication_range": [True, True, False],
         }
     )
     sector_panel = pd.DataFrame(
         {
-            "date": pd.to_datetime(["2025-09-30", "2025-12-31"]),
-            "sector_key": ["fed", "fed"],
-            "level": [1.0, 2.0],
-            "transactions": [0.1, 0.2],
-            "revaluation": [0.01, 0.02],
-            "bills_level": [0.3, 0.4],
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31", "2026-03-31"]),
+            "sector_key": ["fed", "fed", "fed"],
+            "level": [1.0, 2.0, pd.NA],
+            "transactions": [0.1, 0.2, 0.3],
+            "revaluation": [0.01, 0.02, 0.03],
+            "bills_level": [0.3, 0.4, 0.5],
         }
     )
     publication_ranges = pd.DataFrame(
@@ -729,13 +737,27 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
     )
 
     fed_row = inventory[inventory["sector_key"] == "fed"].iloc[0]
-    assert fed_row["latest_estimand_class"] == "new_estimand"
-    assert fed_row["latest_estimator_family"] == "new_family"
-    assert fed_row["latest_level_source_provider_used"] == "fred_level_supplement"
-    assert bool(fed_row["latest_level_supplemented_from_fred"]) is True
-    assert fed_row["latest_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
-    assert fed_row["latest_interval_origin"] == "new_interval"
-    assert fed_row["latest_publication_status"] == "published_estimate"
+    assert fed_row["latest_emitted_date"] == "2026-03-31"
+    assert fed_row["latest_published_date"] == "2025-12-31"
+    assert fed_row["latest_emitted_estimand_class"] == "terminal_estimand"
+    assert fed_row["latest_published_estimand_class"] == "new_estimand"
+    assert fed_row["latest_emitted_estimator_family"] == "terminal_family"
+    assert fed_row["latest_published_estimator_family"] == "new_family"
+    assert fed_row["latest_emitted_level_source_provider_used"] == "fed_z1"
+    assert fed_row["latest_published_level_source_provider_used"] == "fred_level_supplement"
+    assert bool(fed_row["latest_emitted_level_supplemented_from_fred"]) is False
+    assert bool(fed_row["latest_published_level_supplemented_from_fred"]) is True
+    assert fed_row["latest_emitted_point_estimate_origin"] == "terminal_origin"
+    assert fed_row["latest_published_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
+    assert fed_row["latest_emitted_interval_origin"] == "terminal_interval"
+    assert fed_row["latest_published_interval_origin"] == "new_interval"
+    assert fed_row["latest_emitted_publication_status"] == "status_only_no_level_or_estimate"
+    assert fed_row["latest_published_publication_status"] == "published_estimate"
+    assert bool(fed_row["ever_backfilled"]) is True
+    assert bool(fed_row["ever_short_window_estimated"]) is True
+    assert bool(fed_row["ever_short_window_origin"]) is True
+    assert bool(fed_row["latest_emitted_backfilled"]) is False
+    assert bool(fed_row["latest_published_backfilled"]) is True
 
 
 def test_full_coverage_release_summary_distinguishes_requested_end_date_from_resolved_snapshot(tmp_path):

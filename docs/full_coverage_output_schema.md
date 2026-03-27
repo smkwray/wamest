@@ -116,8 +116,9 @@ Rules:
 - records the configured method-priority stack from `configs/sector_definitions_full.yaml`
 - records whether a sector has a direct `bills_series`
 - records whether the sector is explicitly eligible for release-window promotion in `configs/coverage_registry.yaml`
-- records the publication-range span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and latest publication status from the canonical artifact
-- records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest emitted level path was supplemented from FRED
+- records the publication-range span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and explicit historical `ever_*` usage flags from the canonical artifact
+- distinguishes `latest_emitted_*` fields from `latest_published_*` fields so the common-grid terminal row is not conflated with the latest in-publication-range row
+- records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest published level path was supplemented from FRED
 
 ## Validation semantics
 

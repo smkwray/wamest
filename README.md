@@ -222,7 +222,7 @@ The full-coverage release path:
 - distinguishes row-level short-window estimates from rows whose estimate origin came from short-window promotion
 - exports basis fields, direct composition metrics, and interval bands alongside the headline maturity estimates
 - publishes `fed_exact_overlay.csv` as a direct SOMA companion while keeping the canonical Fed row cross-sector-comparable and inferred
-- writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, publication-range endpoints, and latest provenance fields
+- writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, publication-range endpoints, historical `ever_*` usage flags, and separate latest-emitted versus latest-published provenance fields
 - publishes reconciliation diagnostics for formula and parent/child rollups
 - treats the high-confidence subset as a filter, not as the scope boundary
 
