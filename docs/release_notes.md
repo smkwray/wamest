@@ -40,7 +40,7 @@ Included in this release path:
 - a separate full-coverage release surface for required canonical Z.1 holder sectors
 - a full-scope Fed Z.1 default for the sector panel, calibration, and estimation flow
 - configured FRED level supplements for required sectors whose level series are missing from the Fed release zip
-- ragged historical spans where sector source availability differs
+- a common required-sector/date panel with explicit publication-range endpoints and row-level publication-status semantics
 - explicit tiering for weakly identified sectors instead of dropping them from output
 - a canonical panel, a latest common-quarter snapshot, a high-confidence subset, and reconciliation-node output
 - short-window promotion for selected stronger sectors before history-preserving backfill is used

@@ -1,6 +1,6 @@
 # Full-Coverage Output Schema
 
-This document defines the artifact contract for the separate `v0.2` full-coverage research release. It is distinct from the frozen `v0.1` public preview contract and may include ragged histories, weaker sectors, and non-preview artifact names.
+This document defines the artifact contract for the separate `v0.2` full-coverage research release. It is distinct from the frozen `v0.1` public preview contract and may include weaker sectors, explicit publication-range metadata, and non-preview artifact names.
 
 ## Scope
 
@@ -15,7 +15,7 @@ Canonical entrypoints:
 The release is designed for:
 
 - full holder coverage across required canonical sectors
-- ragged historical spans where source availability differs by sector
+- a common required-sector/date scaffold with explicit publication-range endpoints and row-level `in_publication_range` flags
 - explicit separation between required canonical sectors, non-canonical reconciliation nodes, and high-confidence subsets
 - coverage-honest reporting rather than preview-minimal reporting
 
@@ -42,11 +42,12 @@ Rules:
 - contains one row per required canonical sector/date combination in the full-coverage release scope
 - preserves each sector's actual `node_type`, including `atomic`, `proxy`, and `residual`
 - includes weak sectors, partially identified sectors, and explicit status rows for sector/date combinations that lack a publishable maturity estimate
-- allows ragged histories when some sectors start later than others
+- uses the common required-sector/date scaffold rather than dropping out-of-range rows
 - excludes non-canonical reconciliation or roll-up nodes
 - retains the core maturity fields used in the preview path, and extends them with direct composition metrics, calibrated interval bands, and explicit measurement-basis fields
 - includes `history_preserving_backfill` so leading warmup rows filled from the nearest available sector estimate remain explicit and easy to filter
 - includes `publication_status` and `publication_status_reason` so every required row is explicit about whether it is a published estimate, a history-preserving backfill row, or a status-only row
+- includes `in_publication_range` so the common-grid panel can be filtered to each sector's feasible publication span without losing audit visibility outside that span
 - distinguishes `row_is_short_window_estimate` from `estimate_origin_includes_short_window_promotion`
 
 Expected interpretation:
@@ -55,7 +56,7 @@ Expected interpretation:
 - calibrated uncertainty bands communicate uncertainty and weak identification
 - `effective_duration_years` is only populated when a distinct duration map is actually supplied; otherwise `effective_duration_status` records that the metric is not separately estimated
 - status-only rows are acceptable when a sector/date lacks a publishable maturity estimate under the current public-data stack
-- the canonical panel preserves the longest feasible history for each sector and is not truncated to the latest common quarter
+- the canonical panel is not truncated to the latest common quarter, but sector-level historical interpretation should follow `in_publication_range` plus the publication-range endpoints exported in the summary and inventory artifacts
 
 ## Latest snapshot
 
@@ -63,8 +64,8 @@ Expected interpretation:
 
 Rules:
 
-- one row per required canonical sector whose feasible publication range reaches the resolved quarter
-- the snapshot quarter is the latest quarter shared across required canonical sectors in the release build
+- one row per required canonical sector whose publication range reaches the resolved quarter
+- the snapshot quarter is the minimum of the per-sector `latest_publication_date` values across required canonical sectors in the release build
 - the row for each sector is taken from that common quarter
 - sectors without a row at the resolved common quarter fail validation
 - this artifact is a common-quarter cross-section companion to the canonical panel, not the canonical panel's history definition
@@ -115,16 +116,16 @@ Rules:
 - records the configured method-priority stack from `configs/sector_definitions_full.yaml`
 - records whether a sector has a direct `bills_series`
 - records whether the sector is explicitly eligible for release-window promotion in `configs/coverage_registry.yaml`
-- records the feasible history span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and latest publication status from the canonical artifact
+- records the publication-range span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and latest publication status from the canonical artifact
 - records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest emitted level path was supplemented from FRED
 
 ## Validation semantics
 
 The full-coverage release should validate the following:
 
-- every required canonical sector appears in the canonical panel for every date in its feasible publication range
+- every required canonical sector appears in the canonical panel for every date in its publication range
 - every required canonical sector/date row carries a non-null `publication_status`
-- the latest snapshot quarter is the minimum of the per-sector latest available dates across required canonical sectors in the build
+- the latest snapshot quarter is the minimum of the per-sector `latest_publication_date` values across required canonical sectors in the build
 - the high-confidence subset is a strict filter of the canonical panel
 - reconciliation nodes do not leak into the canonical artifact
 - preview validation remains separate and unchanged
@@ -151,7 +152,8 @@ The full-coverage release should validate the following:
 Preferred language for the full-coverage release:
 
 - full coverage
-- ragged history
+- explicit publication range
+- common-grid canonical panel
 - required canonical sectors
 - high-confidence subset
 - weakest sectors

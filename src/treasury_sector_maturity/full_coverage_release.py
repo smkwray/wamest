@@ -286,8 +286,10 @@ def build_full_coverage_release(
             )
         )
     )
-    latest_quarter = _resolve_latest_snapshot_quarter(sector_panel, required_canonical)
-    latest_required_sectors = _latest_required_sector_keys(sector_panel, required_canonical, latest_quarter)
+    publication_ranges = _build_publication_ranges(canonical)
+    canonical = _attach_publication_range_flags(canonical, publication_ranges)
+    latest_quarter = _resolve_latest_snapshot_quarter(publication_ranges, required_canonical)
+    latest_required_sectors = _latest_required_sector_keys(publication_ranges, latest_quarter)
     if latest_quarter is not None:
         latest = canonical[
             canonical["date"].eq(latest_quarter)
@@ -314,6 +316,7 @@ def build_full_coverage_release(
         "selection_reason",
         "high_confidence_flag",
         "history_preserving_backfill",
+        "in_publication_range",
         "publication_status",
         "publication_status_reason",
         "row_is_short_window_estimate",
@@ -358,6 +361,7 @@ def build_full_coverage_release(
     required_sector_inventory = _build_required_sector_inventory(
         canonical=canonical,
         sector_panel=sector_panel,
+        publication_ranges=publication_ranges,
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
         catalog=sector_inputs.catalog,
@@ -389,9 +393,10 @@ def build_full_coverage_release(
         summary_json_out=summary_json_path,
         reconciliation=reconciliation,
         required_sector_inventory=required_sector_inventory,
+        publication_ranges=publication_ranges,
     )
-    history_spans = _build_history_spans(canonical, sector_panel, required_canonical)
-    coverage_completeness = _build_coverage_completeness(canonical, sector_panel, required_canonical)
+    history_spans = _build_history_spans(canonical, publication_ranges, required_canonical)
+    coverage_completeness = _build_coverage_completeness(canonical, sector_panel, required_canonical, publication_ranges)
     weakest_sectors = _build_weakest_sectors(canonical, sector_panel)
     reconciliation_diagnostics = _build_reconciliation_diagnostics(
         sector_panel=sector_panel,
@@ -408,6 +413,7 @@ def build_full_coverage_release(
         sector_panel=sector_panel,
         coverage_completeness=coverage_completeness,
         required_canonical=required_canonical,
+        publication_ranges=publication_ranges,
         latest_quarter=latest_quarter,
         latest_required_sectors=latest_required_sectors,
         reconciliation=reconciliation,
@@ -1128,34 +1134,124 @@ def _annotate_publication_status(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _resolve_latest_snapshot_quarter(sector_panel: pd.DataFrame, required_canonical: list[str]) -> pd.Timestamp | None:
-    frame = sector_panel.copy()
-    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
-    subset = frame[
-        frame["sector_key"].isin(required_canonical)
-    ][["sector_key", "date"]].dropna()
+def _build_publication_ranges(canonical: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    if canonical.empty:
+        return pd.DataFrame(
+            columns=[
+                "sector_key",
+                "first_level_date",
+                "latest_level_date",
+                "first_publishable_estimate_date",
+                "latest_publishable_estimate_date",
+                "first_publication_date",
+                "latest_publication_date",
+            ]
+        )
+
+    for sector_key, sub in canonical.groupby("sector_key", sort=True):
+        sector = _sort_release_frame(sub)
+        sector["date"] = pd.to_datetime(sector["date"], errors="coerce")
+        level_dates = sector.loc[sector["level"].notna(), "date"] if "level" in sector.columns else pd.Series(dtype="datetime64[ns]")
+        estimate_dates = sector.loc[_has_published_estimate(sector), "date"]
+        publication_dates = sector.loc[
+            sector["publication_status"].notna()
+            & sector["publication_status"].astype(str).ne("status_only_no_level_or_estimate"),
+            "date",
+        ]
+        rows.append(
+            {
+                "sector_key": str(sector_key),
+                "first_level_date": _date_or_none(level_dates.min()),
+                "latest_level_date": _date_or_none(level_dates.max()),
+                "first_publishable_estimate_date": _date_or_none(estimate_dates.min()),
+                "latest_publishable_estimate_date": _date_or_none(estimate_dates.max()),
+                "first_publication_date": _date_or_none(publication_dates.min()),
+                "latest_publication_date": _date_or_none(publication_dates.max()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _attach_publication_range_flags(canonical: pd.DataFrame, publication_ranges: pd.DataFrame) -> pd.DataFrame:
+    if canonical.empty:
+        out = canonical.copy()
+        out["in_publication_range"] = pd.Series(dtype=bool)
+        return out
+
+    out = canonical.copy()
+    ranges = publication_ranges.copy()
+    for column in [
+        "first_publication_date",
+        "latest_publication_date",
+    ]:
+        if column in ranges.columns:
+            ranges[column] = pd.to_datetime(ranges[column], errors="coerce")
+    out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out = out.merge(ranges[["sector_key", "first_publication_date", "latest_publication_date"]], on="sector_key", how="left")
+    out["in_publication_range"] = (
+        out["first_publication_date"].notna()
+        & out["latest_publication_date"].notna()
+        & out["date"].ge(out["first_publication_date"])
+        & out["date"].le(out["latest_publication_date"])
+    )
+    return out
+
+
+def _resolve_latest_snapshot_quarter(publication_ranges: pd.DataFrame, required_canonical: list[str]) -> pd.Timestamp | None:
+    if publication_ranges.empty:
+        return None
+    subset = publication_ranges[
+        publication_ranges["sector_key"].astype(str).isin(required_canonical)
+    ].copy()
+    subset["latest_publication_date"] = pd.to_datetime(subset["latest_publication_date"], errors="coerce")
+    subset = subset[subset["latest_publication_date"].notna()]
     if subset.empty:
         return None
-    per_sector_latest = subset.groupby("sector_key", sort=False)["date"].max()
-    if per_sector_latest.empty:
-        return None
-    return pd.Timestamp(per_sector_latest.min()).normalize()
+    return pd.Timestamp(subset["latest_publication_date"].min()).normalize()
 
 
 def _latest_required_sector_keys(
-    sector_panel: pd.DataFrame,
-    required_canonical: list[str],
+    publication_ranges: pd.DataFrame,
     latest_quarter: pd.Timestamp | None,
 ) -> set[str]:
-    if latest_quarter is None:
+    if latest_quarter is None or publication_ranges.empty:
         return set()
-    frame = sector_panel.copy()
-    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+    frame = publication_ranges.copy()
+    frame["first_publication_date"] = pd.to_datetime(frame["first_publication_date"], errors="coerce")
+    frame["latest_publication_date"] = pd.to_datetime(frame["latest_publication_date"], errors="coerce")
     covered = frame[
-        frame["sector_key"].isin(required_canonical)
-        & frame["date"].eq(pd.Timestamp(latest_quarter))
+        frame["first_publication_date"].notna()
+        & frame["latest_publication_date"].notna()
+        & frame["first_publication_date"].le(pd.Timestamp(latest_quarter))
+        & frame["latest_publication_date"].ge(pd.Timestamp(latest_quarter))
     ]["sector_key"].dropna().astype(str).unique().tolist()
     return set(covered)
+
+
+def _publication_range_frame(
+    *,
+    sector_panel: pd.DataFrame,
+    publication_ranges: pd.DataFrame,
+    sector_keys: set[str] | list[str],
+) -> pd.DataFrame:
+    frame = sector_panel.copy()
+    if frame.empty or publication_ranges.empty:
+        return frame.iloc[0:0].copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+    ranges = publication_ranges.copy()
+    ranges = ranges[ranges["sector_key"].astype(str).isin({str(key) for key in sector_keys})]
+    if ranges.empty:
+        return frame.iloc[0:0].copy()
+    ranges["first_publication_date"] = pd.to_datetime(ranges["first_publication_date"], errors="coerce")
+    ranges["latest_publication_date"] = pd.to_datetime(ranges["latest_publication_date"], errors="coerce")
+    frame = frame.merge(ranges[["sector_key", "first_publication_date", "latest_publication_date"]], on="sector_key", how="inner")
+    return frame[
+        frame["first_publication_date"].notna()
+        & frame["latest_publication_date"].notna()
+        & frame["date"].ge(frame["first_publication_date"])
+        & frame["date"].le(frame["latest_publication_date"])
+    ].copy()
 
 
 def _build_release_summary(
@@ -1175,8 +1271,16 @@ def _build_release_summary(
     summary_json_out: Path,
     reconciliation: pd.DataFrame,
     required_sector_inventory: pd.DataFrame,
+    publication_ranges: pd.DataFrame,
 ) -> dict[str, Any]:
     date_range = _date_range(canonical)
+    publication_start = None
+    publication_end = None
+    if not publication_ranges.empty:
+        starts = pd.to_datetime(publication_ranges["first_publication_date"], errors="coerce").dropna()
+        ends = pd.to_datetime(publication_ranges["latest_publication_date"], errors="coerce").dropna()
+        publication_start = _date_or_none(starts.min())
+        publication_end = _date_or_none(ends.max())
     return {
         "coverage_scope": coverage_scope,
         "source_provider_requested": source_provider,
@@ -1193,6 +1297,8 @@ def _build_release_summary(
         "short_window_origin_rows": int(canonical["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if "estimate_origin_includes_short_window_promotion" in canonical.columns else 0,
         "date_start": date_range[0],
         "date_end": date_range[1],
+        "publication_date_start": publication_start,
+        "publication_date_end": publication_end,
         "model_config_path": str(model_config_path),
         "release_config_path": str(release_config_path),
         "sector_defs_path": str(sector_defs),
@@ -1203,24 +1309,26 @@ def _build_release_summary(
 
 def _build_history_spans(
     canonical: pd.DataFrame,
-    sector_panel: pd.DataFrame,
+    publication_ranges: pd.DataFrame,
     required_canonical: list[str],
 ) -> list[dict[str, Any]]:
-    registry = sector_panel.drop_duplicates("sector_key").set_index("sector_key")
+    range_lookup = publication_ranges.set_index("sector_key").to_dict(orient="index") if not publication_ranges.empty else {}
     out: list[dict[str, Any]] = []
     required_set = set(required_canonical)
     for sector_key, sub in canonical.groupby("sector_key", sort=True):
-        sector_rows = sector_panel[sector_panel["sector_key"] == sector_key].copy()
-        history_start = None if sector_rows.empty else pd.Timestamp(sector_rows["date"].min()).date().isoformat()
-        history_end = None if sector_rows.empty else pd.Timestamp(sector_rows["date"].max()).date().isoformat()
         row0 = sub.iloc[0]
+        range_row = range_lookup.get(str(sector_key), {})
         out.append(
             {
                 "sector_key": str(sector_key),
                 "included": True,
-                "date_start": history_start,
-                "date_end": history_end,
-                "rows": int(len(sub)),
+                "date_start": _as_text(range_row.get("first_publication_date")),
+                "date_end": _as_text(range_row.get("latest_publication_date")),
+                "first_level_date": _as_text(range_row.get("first_level_date")),
+                "latest_level_date": _as_text(range_row.get("latest_level_date")),
+                "first_publishable_estimate_date": _as_text(range_row.get("first_publishable_estimate_date")),
+                "latest_publishable_estimate_date": _as_text(range_row.get("latest_publishable_estimate_date")),
+                "rows": int(sub["in_publication_range"].fillna(False).sum()) if "in_publication_range" in sub.columns else int(len(sub)),
                 "node_type": str(row0.get("node_type") or ""),
                 "required_for_full_coverage": bool(row0.get("required_for_full_coverage", False)),
                 "concept_risk": _as_text(row0.get("concept_risk")),
@@ -1234,23 +1342,28 @@ def _build_history_spans(
             }
         )
 
-    for sector_key, row in registry.iterrows():
-        if sector_key not in required_set or sector_key in set(canonical["sector_key"].astype(str)):
+    for sector_key in sorted(required_set - set(canonical["sector_key"].astype(str))):
+        range_row = range_lookup.get(str(sector_key), {})
+        if not range_row:
             continue
         out.append(
             {
                 "sector_key": str(sector_key),
                 "included": False,
-                "date_start": None,
-                "date_end": None,
+                "date_start": _as_text(range_row.get("first_publication_date")),
+                "date_end": _as_text(range_row.get("latest_publication_date")),
+                "first_level_date": _as_text(range_row.get("first_level_date")),
+                "latest_level_date": _as_text(range_row.get("latest_level_date")),
+                "first_publishable_estimate_date": _as_text(range_row.get("first_publishable_estimate_date")),
+                "latest_publishable_estimate_date": _as_text(range_row.get("latest_publishable_estimate_date")),
                 "rows": 0,
-                "node_type": _as_text(row.get("node_type")),
-                "required_for_full_coverage": bool(row.get("required_for_full_coverage", False)),
-                "concept_risk": _as_text(row.get("concept_risk")),
+                "node_type": None,
+                "required_for_full_coverage": True,
+                "concept_risk": None,
                 "estimand_class": None,
                 "publication_status": None,
                 "high_confidence_flag": False,
-                "history_start_reason": _as_text(row.get("history_start_reason")),
+                "history_start_reason": None,
                 "history_preserving_backfill_rows": 0,
                 "short_window_estimate_rows": 0,
                 "short_window_origin_rows": 0,
@@ -1264,11 +1377,16 @@ def _build_coverage_completeness(
     canonical: pd.DataFrame,
     sector_panel: pd.DataFrame,
     required_canonical: list[str],
+    publication_ranges: pd.DataFrame,
 ) -> dict[str, Any]:
     canonical_keys = set(canonical["sector_key"].astype(str).dropna())
     required_set = set(required_canonical)
     missing = sorted(required_set - canonical_keys)
-    sector_frame = sector_panel[sector_panel["sector_key"].isin(required_set)].copy()
+    sector_frame = _publication_range_frame(
+        sector_panel=sector_panel,
+        publication_ranges=publication_ranges,
+        sector_keys=required_set,
+    )
     estimate_rows = canonical[
         canonical["sector_key"].isin(required_set)
         & _has_published_estimate(canonical)
@@ -1305,6 +1423,7 @@ def _build_required_sector_inventory(
     *,
     canonical: pd.DataFrame,
     sector_panel: pd.DataFrame,
+    publication_ranges: pd.DataFrame,
     sector_definitions: dict[str, Any],
     coverage_registry: dict[str, Any],
     catalog: dict[str, Any],
@@ -1316,6 +1435,7 @@ def _build_required_sector_inventory(
         str(sector_key): sub.copy()
         for sector_key, sub in canonical.groupby("sector_key", sort=True)
     }
+    publication_lookup = publication_ranges.set_index("sector_key").to_dict(orient="index") if not publication_ranges.empty else {}
     sector_panel = sector_panel.copy()
     sector_panel["date"] = pd.to_datetime(sector_panel["date"], errors="coerce")
     raw_available_codes = set(raw_long_df["series_code"].dropna().astype(str)) if "series_code" in raw_long_df.columns else set()
@@ -1347,10 +1467,15 @@ def _build_required_sector_inventory(
         sector_rows_all = sector_panel[
             sector_panel["sector_key"].astype(str).eq(sector_key)
         ].copy()
-        history_rows = sector_rows_all.copy()
+        range_row = publication_lookup.get(str(sector_key), {})
+        publication_rows = _publication_range_frame(
+            sector_panel=sector_rows_all,
+            publication_ranges=publication_ranges,
+            sector_keys={sector_key},
+        )
         canonical_rows = canonical_groups.get(sector_key, pd.DataFrame())
-        date_start = None if history_rows.empty else pd.Timestamp(history_rows["date"].min()).date().isoformat()
-        date_end = None if history_rows.empty else pd.Timestamp(history_rows["date"].max()).date().isoformat()
+        date_start = _as_text(range_row.get("first_publication_date"))
+        date_end = _as_text(range_row.get("latest_publication_date"))
         latest_estimand_class = None
         latest_estimator_family = None
         latest_level_source_provider_used = None
@@ -1410,11 +1535,15 @@ def _build_required_sector_inventory(
                 "same_base_source_codes": ", ".join(same_base_codes),
                 "history_start": date_start,
                 "history_end": date_end,
+                "first_level_date": _as_text(range_row.get("first_level_date")),
+                "latest_level_date": _as_text(range_row.get("latest_level_date")),
+                "first_publishable_estimate_date": _as_text(range_row.get("first_publishable_estimate_date")),
+                "latest_publishable_estimate_date": _as_text(range_row.get("latest_publishable_estimate_date")),
                 "level_rows_available": int(sector_rows_all["level"].notna().sum()) if "level" in sector_rows_all.columns else 0,
                 "transactions_rows_available": int(sector_rows_all["transactions"].notna().sum()) if "transactions" in sector_rows_all.columns else 0,
                 "revaluation_rows_available": int(sector_rows_all["revaluation"].notna().sum()) if "revaluation" in sector_rows_all.columns else 0,
                 "bills_rows_available": int(sector_rows_all["bills_level"].notna().sum()) if "bills_level" in sector_rows_all.columns else 0,
-                "history_row_count": int(len(history_rows)),
+                "history_row_count": int(len(publication_rows)),
                 "canonical_row_count": int(len(canonical_rows)),
                 "history_preserving_backfill_rows": int(canonical_rows["history_preserving_backfill"].fillna(False).sum()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else 0,
                 "short_window_estimate_rows": int(canonical_rows["row_is_short_window_estimate"].fillna(False).sum()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else 0,
@@ -1657,6 +1786,7 @@ def _build_validation_summary(
     sector_panel: pd.DataFrame,
     coverage_completeness: dict[str, Any],
     required_canonical: list[str],
+    publication_ranges: pd.DataFrame,
     latest_quarter: pd.Timestamp | None,
     latest_required_sectors: set[str],
     reconciliation: pd.DataFrame,
@@ -1670,7 +1800,11 @@ def _build_validation_summary(
         high_confidence_match = _frames_equal(filtered, high_confidence)
     canonical_unique_pairs = len(canonical[["date", "sector_key"]].drop_duplicates()) == len(canonical)
     latest_unique_pairs = len(latest[["date", "sector_key"]].drop_duplicates()) == len(latest)
-    required_rows = sector_panel[sector_panel["sector_key"].isin(required_canonical)]
+    required_rows = _publication_range_frame(
+        sector_panel=sector_panel,
+        publication_ranges=publication_ranges,
+        sector_keys=set(required_canonical),
+    )
     canonical_pairs = set(zip(canonical["date"].astype(str), canonical["sector_key"].astype(str)))
     required_pairs = set(zip(required_rows["date"].astype(str), required_rows["sector_key"].astype(str)))
     required_coverage = required_pairs.issubset(canonical_pairs)
@@ -1688,6 +1822,7 @@ def _build_validation_summary(
             latest["date"].nunique() == 1
             and bool(pd.Timestamp(latest["date"].iloc[0]).normalize() == pd.Timestamp(latest_quarter).normalize())
             and set(latest["sector_key"].astype(str)) == set(latest_required_sectors)
+            and bool(latest["in_publication_range"].fillna(False).all())
         )
     reconciliation_diagnostics = reconciliation_diagnostics or {}
     formula_reconciliation_passes = int(reconciliation_diagnostics.get("formula_rows_failing", 0)) == 0
@@ -1727,7 +1862,7 @@ def _build_validation_summary(
             "check": "required_sector_coverage_complete",
             "status": "pass" if required_coverage else "fail",
             "hard_failure": True,
-            "details": "Every required canonical sector/date row appears in the canonical artifact." if required_coverage else "At least one required canonical sector/date row is missing from the canonical artifact.",
+            "details": "Every required canonical sector/date row inside its publication range appears in the canonical artifact." if required_coverage else "At least one required canonical sector/date row inside its publication range is missing from the canonical artifact.",
         },
         {
             "check": "required_sector_publication_complete",
@@ -1745,7 +1880,7 @@ def _build_validation_summary(
             "check": "latest_snapshot_matches_required_rows",
             "status": "pass" if latest_matches else "fail",
             "hard_failure": True,
-            "details": "Latest snapshot matches the latest required-sector common quarter." if latest_matches else "Latest snapshot does not match the required-sector common-quarter rows.",
+            "details": "Latest snapshot matches the latest required-sector quarter implied by sector publication ranges." if latest_matches else "Latest snapshot does not match the required-sector quarter implied by sector publication ranges.",
         },
         {
             "check": "formula_reconciliation_passes",
@@ -1951,12 +2086,14 @@ def _render_release_report(
                 f"Requested provider: `{release_summary['source_provider_requested']}`",
                 f"Requested end date: `{release_summary['requested_end_date'] or 'none'}`",
                 f"Resolved latest snapshot date: `{release_summary['resolved_latest_snapshot_date']}`",
-                "Canonical panel preserves the longest feasible sector history even when the latest common-quarter snapshot is narrower.",
+                "Canonical panel is emitted on the common required-sector release grid, with explicit publication-range fields defining each sector's feasible publication span.",
                 f"Canonical rows: `{release_summary['canonical_row_count']}`",
                 f"Latest snapshot rows: `{release_summary['latest_snapshot_row_count']}`",
                 f"High-confidence rows: `{release_summary['high_confidence_row_count']}`",
                 f"Reconciliation rows: `{release_summary['reconciliation_row_count']}`",
                 f"Required inventory rows: `{release_summary['required_sector_inventory_row_count']}`",
+                f"Publication date start: `{release_summary['publication_date_start'] or 'none'}`",
+                f"Publication date end: `{release_summary['publication_date_end'] or 'none'}`",
                 f"History-preserving backfill rows: `{release_summary['history_preserving_backfill_rows']}`",
                 f"Short-window estimate rows: `{release_summary['short_window_estimate_rows']}`",
                 f"Short-window origin rows: `{release_summary['short_window_origin_rows']}`",
@@ -1973,13 +2110,13 @@ def _render_release_report(
                 f"Snapshot history-preserving backfill rows: `{latest_snapshot_summary['history_preserving_backfill_rows']}`",
                 f"Snapshot short-window estimate rows: `{latest_snapshot_summary['short_window_estimate_rows']}`",
                 f"Snapshot short-window origin rows: `{latest_snapshot_summary['short_window_origin_rows']}`",
-                "This snapshot is a separate common-quarter cross-section, not the definition of the canonical history span.",
+                "This snapshot is resolved from sector-level publication-range endpoints, not from the raw union-of-dates scaffold alone.",
             ]
         ),
         "",
         _render_markdown_table(
-            _summarize_frame(latest, ["sector_key", "date", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"]),
-            columns=["sector_key", "date", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"],
+            _summarize_frame(latest, ["sector_key", "date", "in_publication_range", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"]),
+            columns=["sector_key", "date", "in_publication_range", "publication_status", "high_confidence_flag", "history_preserving_backfill", "row_is_short_window_estimate", "estimate_origin_includes_short_window_promotion"],
         ),
         "",
         "## Fed Exact Overlay",
@@ -2046,7 +2183,7 @@ def _render_release_report(
         _render_bullets(
             [
                 f"Artifact: `{required_inventory_path}`",
-                "Inventory tracks raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, latest backfill/promotion usage, publication status, and latest provenance fields for every required canonical sector.",
+                "Inventory tracks raw parsed-source availability, post-supplement level availability, explicit level and publication-range endpoints, latest backfill/promotion usage, publication status, and latest provenance fields for every required canonical sector.",
             ]
         ),
         "",
@@ -2060,6 +2197,10 @@ def _render_release_report(
             "release_window_promotion_eligible",
             "history_start",
             "history_end",
+            "first_level_date",
+            "latest_level_date",
+            "first_publishable_estimate_date",
+            "latest_publishable_estimate_date",
             "level_rows_available",
             "transactions_rows_available",
             "revaluation_rows_available",
@@ -2093,6 +2234,10 @@ def _render_release_report(
             "included",
             "date_start",
             "date_end",
+            "first_level_date",
+            "latest_level_date",
+            "first_publishable_estimate_date",
+            "latest_publishable_estimate_date",
             "rows",
             "node_type",
             "required_for_full_coverage",
@@ -2245,6 +2390,7 @@ def _project_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         "required_for_full_coverage",
         "high_confidence_flag",
         "history_preserving_backfill",
+        "in_publication_range",
         "row_is_short_window_estimate",
         "estimate_origin_includes_short_window_promotion",
     ]:
@@ -2287,6 +2433,15 @@ def _as_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _date_or_none(value: Any) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    timestamp = pd.to_datetime(value, errors="coerce")
+    if pd.isna(timestamp):
+        return None
+    return pd.Timestamp(timestamp).date().isoformat()
 
 
 def _frames_equal(left: pd.DataFrame, right: pd.DataFrame) -> bool:

@@ -44,6 +44,7 @@ def test_full_coverage_release_builder_surface_is_exposed():
     assert "latest_sector_snapshot.csv" in help_text
     assert "high_confidence_sector_maturity.csv" in help_text
     assert "reconciliation_nodes.csv" in help_text
+    assert "fed_exact_overlay.csv" in help_text
     assert "required_sector_inventory.csv" in help_text
     assert "--supplement-missing-z1-levels-from-fred" in help_text
 

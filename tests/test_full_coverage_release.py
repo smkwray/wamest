@@ -88,6 +88,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert "history_preserving_backfill" in canonical.columns
     assert "publication_status" in canonical.columns
     assert "publication_status_reason" in canonical.columns
+    assert "in_publication_range" in canonical.columns
     assert "row_is_short_window_estimate" in canonical.columns
     assert "estimate_origin_includes_short_window_promotion" in canonical.columns
     assert "level_measurement_basis" in canonical.columns
@@ -138,21 +139,28 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert canonical["effective_duration_status"].eq("not_separately_estimated").all()
     assert canonical["effective_duration_years"].isna().all()
 
-    sector_panel = _build_full_scope_toy_sector_panel()
     required_canonical = set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
-    latest_by_sector = sector_panel.loc[
-        sector_panel["sector_key"].isin(required_canonical),
-        ["sector_key", "date"],
-    ].groupby("sector_key")["date"].max()
+    publication_rows = canonical[
+        canonical["sector_key"].isin(required_canonical)
+        & canonical["in_publication_range"].fillna(False)
+    ][["sector_key", "date"]].copy()
+    latest_by_sector = publication_rows.groupby("sector_key")["date"].max()
     latest_quarter = pd.Timestamp(latest_by_sector.min())
     if pd.notna(latest_quarter):
-        expected_latest_sectors = set(latest_by_sector.index.astype(str))
+        first_by_sector = publication_rows.groupby("sector_key")["date"].min()
+        expected_latest_sectors = {
+            str(sector_key)
+            for sector_key in latest_by_sector.index.astype(str)
+            if first_by_sector.loc[sector_key] <= latest_quarter <= latest_by_sector.loc[sector_key]
+        }
         assert latest["date"].nunique() == 1
         assert latest["date"].iloc[0] == latest_quarter
         assert set(latest["sector_key"].astype(str)) == expected_latest_sectors
+        assert latest["in_publication_range"].fillna(False).all()
 
-    expected_required_rows = sector_panel[
-        sector_panel["sector_key"].isin(required_canonical)
+    expected_required_rows = canonical[
+        canonical["sector_key"].isin(required_canonical)
+        & canonical["in_publication_range"].fillna(False)
     ][["date", "sector_key"]].drop_duplicates()
     observed_required_rows = canonical[["date", "sector_key"]].drop_duplicates()
     merged = expected_required_rows.merge(observed_required_rows, on=["date", "sector_key"], how="left", indicator=True)
@@ -225,6 +233,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert summary["release_summary"]["required_sector_inventory_row_count"] == int(len(inventory))
     assert "requested_end_date" in summary["release_summary"]
     assert "resolved_latest_snapshot_date" in summary["release_summary"]
+    assert "publication_date_start" in summary["release_summary"]
+    assert "publication_date_end" in summary["release_summary"]
     expected_required_covered = len(set(canonical["sector_key"].astype(str)) & required_canonical)
     assert summary["coverage_completeness"]["required_canonical_covered"] == expected_required_covered
     assert summary["coverage_completeness"]["missing_required_publication_rows"] == 0
@@ -250,6 +260,12 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert summary["validation"]["parent_child_reconciliation_passes"] is True
     assert set(inventory["sector_key"].astype(str)) == required_canonical
     assert {
+        "history_start",
+        "history_end",
+        "first_level_date",
+        "latest_level_date",
+        "first_publishable_estimate_date",
+        "latest_publishable_estimate_date",
         "level_rows_available",
         "transactions_rows_available",
         "revaluation_rows_available",
@@ -345,29 +361,29 @@ def test_resolve_latest_snapshot_quarter_uses_min_of_per_sector_latest_dates():
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
     resolver = getattr(module, "_resolve_latest_snapshot_quarter")
 
-    sector_panel = pd.DataFrame(
+    publication_ranges = pd.DataFrame(
         {
             "sector_key": [
                 "fed",
-                "fed",
-                "foreigners_total",
                 "foreigners_total",
                 "bank_us_chartered",
             ],
-            "date": pd.to_datetime(
+            "first_publication_date": [
+                "2025-09-30",
+                "2025-09-30",
+                "2025-09-30",
+            ],
+            "latest_publication_date": pd.to_datetime(
                 [
-                    "2025-09-30",
                     "2025-12-31",
-                    "2025-09-30",
                     "2025-12-31",
                     "2025-09-30",
                 ]
             ),
-            "level": [1.0, 1.1, 2.0, 2.1, 3.0],
         }
     )
 
-    latest = resolver(sector_panel, ["fed", "foreigners_total", "bank_us_chartered"])
+    latest = resolver(publication_ranges, ["fed", "foreigners_total", "bank_us_chartered"])
     assert latest == pd.Timestamp("2025-09-30")
 
 
@@ -689,10 +705,22 @@ def test_required_sector_inventory_latest_fields_use_latest_canonical_row():
             "bills_level": [0.3, 0.4],
         }
     )
+    publication_ranges = pd.DataFrame(
+        {
+            "sector_key": ["fed"],
+            "first_level_date": ["2025-09-30"],
+            "latest_level_date": ["2025-12-31"],
+            "first_publishable_estimate_date": ["2025-09-30"],
+            "latest_publishable_estimate_date": ["2025-12-31"],
+            "first_publication_date": ["2025-09-30"],
+            "latest_publication_date": ["2025-12-31"],
+        }
+    )
 
     inventory = inventory_builder(
         canonical=canonical,
         sector_panel=sector_panel,
+        publication_ranges=publication_ranges,
         sector_definitions=sector_defs,
         coverage_registry=coverage_registry,
         catalog=catalog,
@@ -775,12 +803,18 @@ def test_full_coverage_release_summary_tracks_required_sector_history_spans(tmp_
     history_spans = {row["sector_key"]: row for row in summary["history_spans"]}
     required_canonical = set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
     for sector_key in required_canonical:
-        sector_rows = sector_panel[sector_panel["sector_key"] == sector_key]
+        sector_rows = canonical[canonical["sector_key"] == sector_key].copy()
+        panel_rows = sector_panel[sector_panel["sector_key"] == sector_key].copy()
+        publication_rows = sector_rows[sector_rows["in_publication_range"].fillna(False)]
         assert sector_key in history_spans
         span = history_spans[sector_key]
         assert span["included"] is True
-        assert span["date_start"] == pd.Timestamp(sector_rows["date"].min()).date().isoformat()
-        assert span["date_end"] == pd.Timestamp(sector_rows["date"].max()).date().isoformat()
+        assert span["date_start"] == pd.Timestamp(publication_rows["date"].min()).date().isoformat()
+        assert span["date_end"] == pd.Timestamp(publication_rows["date"].max()).date().isoformat()
+        assert span["rows"] == int(len(publication_rows))
+        if panel_rows["level"].notna().any():
+            assert span["first_level_date"] == pd.Timestamp(panel_rows.loc[panel_rows["level"].notna(), "date"].min()).date().isoformat()
+            assert span["latest_level_date"] == pd.Timestamp(panel_rows.loc[panel_rows["level"].notna(), "date"].max()).date().isoformat()
 
 
 def test_full_coverage_release_marks_required_sector_without_estimate_as_status_only(tmp_path, monkeypatch):

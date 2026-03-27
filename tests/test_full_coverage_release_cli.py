@@ -70,12 +70,14 @@ def test_full_coverage_release_cli_builds_expected_artifacts(tmp_path):
     assert "run_manifest.json" in completed.stdout
     assert "full_coverage_summary.json" in completed.stdout
     assert "required_sector_inventory.csv" in completed.stdout
+    assert "fed_exact_overlay.csv" in completed.stdout
 
     for name in [
         "canonical_sector_maturity.csv",
         "latest_sector_snapshot.csv",
         "high_confidence_sector_maturity.csv",
         "reconciliation_nodes.csv",
+        "fed_exact_overlay.csv",
         "required_sector_inventory.csv",
         "full_coverage_report.md",
         "run_manifest.json",

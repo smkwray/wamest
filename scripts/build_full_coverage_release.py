@@ -18,12 +18,12 @@ def main() -> None:
         description=(
             "Build the full-coverage research release bundle and machine-readable outputs "
             "(canonical_sector_maturity.csv, latest_sector_snapshot.csv, "
-            "high_confidence_sector_maturity.csv, reconciliation_nodes.csv, required_sector_inventory.csv, "
+            "high_confidence_sector_maturity.csv, reconciliation_nodes.csv, fed_exact_overlay.csv, required_sector_inventory.csv, "
             "full_coverage_report.md, run_manifest.json, full_coverage_summary.json)."
         )
     )
     parser.add_argument("--out-dir", default="outputs/full_coverage_release")
-    parser.add_argument("--coverage-scope", default="full", choices=["default", "full"])
+    parser.add_argument("--coverage-scope", default="full", choices=["full"])
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--quarters", type=int, default=None)
     parser.add_argument("--summary-json-out", default=None)
@@ -89,6 +89,7 @@ def main() -> None:
     print(f"Wrote {artifacts.latest_sector_snapshot_path}")
     print(f"Wrote {artifacts.high_confidence_sector_maturity_path}")
     print(f"Wrote {artifacts.reconciliation_nodes_path}")
+    print(f"Wrote {artifacts.fed_exact_overlay_path}")
     print(f"Wrote {artifacts.required_sector_inventory_path}")
     print(f"Wrote {artifacts.report_path}")
     print(f"Wrote {artifacts.manifest_path}")

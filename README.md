@@ -215,14 +215,14 @@ The full-coverage release path:
 - in the standard live workflow, supplements required-sector level series that are missing from the Fed release zip but available through configured FRED mappings
 - builds the main surface across required canonical sectors, including proxy and residual sectors where those are part of the configured full-coverage universe
 - emits explicit `publication_status` rows when a required canonical sector/date lacks a publishable maturity estimate instead of dropping that row from the main artifact
-- allows ragged histories instead of forcing a shared start date
-- preserves the longest feasible sector history in the canonical panel and treats the latest snapshot as a separate common-quarter cross-section
+- emits the canonical panel on the common required-sector/date grid while marking each row with `in_publication_range` and sector-level publication-range endpoints in the companion summary artifacts
+- treats the latest snapshot as a separate common-quarter cross-section resolved from required-sector publication-range endpoints
 - uses config-driven short-window promotion for explicitly allowlisted required atomic sectors before falling back to history-preserving fills
 - marks leading warmup carry rows with `history_preserving_backfill`
 - distinguishes row-level short-window estimates from rows whose estimate origin came from short-window promotion
 - exports basis fields, direct composition metrics, and interval bands alongside the headline maturity estimates
 - publishes `fed_exact_overlay.csv` as a direct SOMA companion while keeping the canonical Fed row cross-sector-comparable and inferred
-- writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, history span, and latest provenance fields
+- writes a `required_sector_inventory.csv` artifact covering raw parsed-source availability, post-supplement level availability, method priority, bills-series availability, publication-range endpoints, and latest provenance fields
 - publishes reconciliation diagnostics for formula and parent/child rollups
 - treats the high-confidence subset as a filter, not as the scope boundary
 
