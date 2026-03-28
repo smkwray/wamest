@@ -329,6 +329,8 @@ def rolling_weight_estimates(
             prev.loc[available_assets] = weights
         if factor_cols and np.isfinite(factor_coefficients).all():
             prev_factor = pd.Series(factor_coefficients, index=factor_cols, dtype=float)
+        if not np.isfinite(weights).all():
+            continue
         row = {
             "date": dates[idx],
             "window_obs": int(y_valid.size),

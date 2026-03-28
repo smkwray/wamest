@@ -39,6 +39,14 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     builder = getattr(module, "build_full_coverage_release")
 
     out_dir = tmp_path / "full_coverage_release"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for legacy_name in [
+        "canonical_atomic_sector_maturity.csv",
+        "latest_atomic_sector_snapshot.csv",
+        "tmp_sector.csv",
+        "tmp_series.csv",
+    ]:
+        (out_dir / legacy_name).write_text("stale\n", encoding="utf-8")
     artifacts = builder(
         out_dir=out_dir,
         source_provider="fed",
@@ -72,6 +80,13 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     ]
     for path in expected_paths:
         assert path.exists(), path
+    for legacy_name in [
+        "canonical_atomic_sector_maturity.csv",
+        "latest_atomic_sector_snapshot.csv",
+        "tmp_sector.csv",
+        "tmp_series.csv",
+    ]:
+        assert not (out_dir / legacy_name).exists()
 
     canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv", parse_dates=["date"])
     latest = pd.read_csv(out_dir / "latest_sector_snapshot.csv", parse_dates=["date"])
@@ -135,8 +150,9 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert len(canonical[["date", "sector_key"]].drop_duplicates()) == len(canonical)
     assert len(latest[["date", "sector_key"]].drop_duplicates()) == len(latest)
     assert canonical["coverage_ratio"].isna().all()
-    assert canonical["coverage_measurement_basis"].eq("qualitative_source_coverage_classification").all()
-    assert canonical["effective_duration_status"].eq("not_separately_estimated").all()
+    published_rows = canonical["publication_status"].isin(["published_estimate", "history_preserving_backfill"])
+    assert canonical.loc[published_rows, "coverage_measurement_basis"].eq("qualitative_source_coverage_classification").all()
+    assert canonical.loc[published_rows, "effective_duration_status"].eq("not_separately_estimated").all()
     assert canonical["effective_duration_years"].isna().all()
 
     required_canonical = set(required_canonical_sector_keys(FULL_CATALOG.parent / "coverage_registry.yaml"))
@@ -358,9 +374,11 @@ def test_supplement_missing_z1_levels_from_fred_adds_configured_required_level_s
 
     supplemented_codes = set(supplemented["series_code"].astype(str))
     assert "FL763061100.Q" in supplemented_codes
+    assert "FR763061100.Q" in supplemented_codes
     assert summary["supplemented_series_count"] >= 1
     assert "bank_us_chartered" in summary["supplemented_sector_keys"]
     assert "BOGZ1FL763061100Q" in calls
+    assert "BOGZ1FR763061100Q" in calls
     assert any(row["sector_key"] == "bank_us_chartered" for row in summary["supplemented_level_rows"])
 
 
@@ -697,9 +715,9 @@ def test_required_sector_inventory_splits_latest_emitted_from_latest_published_f
             "interval_origin": ["old_interval", "new_interval", "terminal_interval"],
             "publication_status": ["published_estimate", "published_estimate", "status_only_no_level_or_estimate"],
             "publication_status_reason": ["old", "new", "terminal"],
-            "history_preserving_backfill": [False, True, False],
-            "row_is_short_window_estimate": [False, False, True],
-            "estimate_origin_includes_short_window_promotion": [False, True, True],
+            "history_preserving_backfill": [False, True, "False"],
+            "row_is_short_window_estimate": [False, True, "False"],
+            "estimate_origin_includes_short_window_promotion": [False, True, "False"],
             "in_publication_range": [True, True, False],
         }
     )
@@ -757,6 +775,8 @@ def test_required_sector_inventory_splits_latest_emitted_from_latest_published_f
     assert bool(fed_row["ever_short_window_estimated"]) is True
     assert bool(fed_row["ever_short_window_origin"]) is True
     assert bool(fed_row["latest_emitted_backfilled"]) is False
+    assert bool(fed_row["latest_emitted_short_window_estimated"]) is False
+    assert bool(fed_row["latest_emitted_short_window_origin"]) is False
     assert bool(fed_row["latest_published_backfilled"]) is True
 
 
@@ -831,9 +851,14 @@ def test_full_coverage_release_summary_tracks_required_sector_history_spans(tmp_
         assert sector_key in history_spans
         span = history_spans[sector_key]
         assert span["included"] is True
-        assert span["date_start"] == pd.Timestamp(publication_rows["date"].min()).date().isoformat()
-        assert span["date_end"] == pd.Timestamp(publication_rows["date"].max()).date().isoformat()
-        assert span["rows"] == int(len(publication_rows))
+        if publication_rows.empty:
+            assert span["date_start"] is None
+            assert span["date_end"] is None
+            assert span["rows"] == 0
+        else:
+            assert span["date_start"] == pd.Timestamp(publication_rows["date"].min()).date().isoformat()
+            assert span["date_end"] == pd.Timestamp(publication_rows["date"].max()).date().isoformat()
+            assert span["rows"] == int(len(publication_rows))
         if panel_rows["level"].notna().any():
             assert span["first_level_date"] == pd.Timestamp(panel_rows.loc[panel_rows["level"].notna(), "date"].min()).date().isoformat()
             assert span["latest_level_date"] == pd.Timestamp(panel_rows.loc[panel_rows["level"].notna(), "date"].max()).date().isoformat()

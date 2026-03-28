@@ -9,6 +9,7 @@ from treasury_sector_maturity.estimation import (
     EstimationSettings,
     estimate_effective_maturity_panel,
     fit_static_weights,
+    rolling_weight_estimates,
     weights_to_summary_metrics,
 )
 from treasury_sector_maturity.h15 import build_benchmark_panel, build_benchmark_returns, curve_block_config, load_h15_curve_file
@@ -138,6 +139,21 @@ def test_fit_static_weights_sums_to_one():
     w = fit_static_weights(y, X)
     assert np.isclose(w.sum(), 1.0, atol=1e-6)
     assert (w >= -1e-8).all()
+
+
+def test_rolling_weight_estimates_skips_all_missing_target_windows():
+    dates = pd.to_datetime(["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"])
+    target = pd.Series([np.nan, np.nan, np.nan, np.nan], index=dates)
+    benchmark = pd.DataFrame(
+        {
+            "date": dates,
+            "3m": [0.001, 0.002, 0.003, 0.004],
+            "5y": [0.01, 0.011, 0.012, 0.013],
+        }
+    ).set_index("date")
+
+    out = rolling_weight_estimates(target, benchmark, window=4)
+    assert out.empty
 
 
 def test_weights_to_summary_metrics_distinguishes_bills_tips_and_frn():

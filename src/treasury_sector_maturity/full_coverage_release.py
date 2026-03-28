@@ -45,6 +45,12 @@ DEFAULT_REPORT_PATH = Path("outputs/full_coverage_release/full_coverage_report.m
 DEFAULT_RELEASE_DIR = Path("outputs/full_coverage_release")
 DEFAULT_REGISTRY_PATH = Path("configs/coverage_registry.yaml")
 DEFAULT_RELEASE_CONFIG_PATH = Path("configs/full_coverage_release.yaml")
+LEGACY_RELEASE_ARTIFACT_NAMES = (
+    "canonical_atomic_sector_maturity.csv",
+    "latest_atomic_sector_snapshot.csv",
+    "tmp_sector.csv",
+    "tmp_series.csv",
+)
 RECONCILIATION_TOLERANCE = 1e-6
 PRIMARY_ESTIMATE_COLUMNS = [
     "bill_share",
@@ -154,6 +160,7 @@ def build_full_coverage_release(
     fed_exact_overlay_path = out_dir / "fed_exact_overlay.csv"
     required_inventory_path = out_dir / "required_sector_inventory.csv"
     manifest_path = out_dir / "run_manifest.json"
+    _remove_legacy_release_artifacts(out_dir)
 
     run_started = pd.Timestamp.now("UTC")
     source_artifacts: dict[str, Any] = {}
@@ -607,6 +614,16 @@ def _build_sector_panel(
     )
 
 
+def _default_z1_fred_series_id(series_code: str | None) -> str | None:
+    text = _as_text(series_code)
+    if text is None:
+        return None
+    normalized = text.replace(".", "")
+    if not re.fullmatch(r"[A-Z]{2}\d{6,12}[A-Z]", normalized):
+        return None
+    return f"BOGZ1{normalized}"
+
+
 def _supplement_missing_z1_levels_from_fred(
     *,
     long_df: pd.DataFrame,
@@ -616,8 +633,8 @@ def _supplement_missing_z1_levels_from_fred(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     sector_defs = load_yaml(sector_defs_path).get("sectors") or {}
     coverage_registry = load_coverage_registry(coverage_registry_path)
-    required_atomic = sorted(
-        key for key, node in coverage_registry.items() if node.required_for_full_coverage and node.node_type == "atomic"
+    required_canonical = sorted(
+        key for key, node in coverage_registry.items() if node.required_for_full_coverage and node.is_canonical
     )
     base_long_df = long_df[["series_code", "date", "value"]].copy()
     available_codes = set(base_long_df["series_code"].dropna().astype(str))
@@ -625,41 +642,48 @@ def _supplement_missing_z1_levels_from_fred(
     supplemented_sector_keys: list[str] = []
     supplemented_series_codes: list[str] = []
     supplemented_level_rows: list[dict[str, Any]] = []
+    referenced_series_keys: dict[str, set[str]] = {}
+    for sector_key in required_canonical:
+        spec = dict(sector_defs.get(sector_key) or {})
+        for field in ("level_series", "bills_series"):
+            series_key = _as_text(spec.get(field))
+            if series_key:
+                referenced_series_keys.setdefault(sector_key, set()).add(series_key)
 
-    for sector_key in required_atomic:
-        level_series_key = _as_text((sector_defs.get(sector_key) or {}).get("level_series"))
-        if level_series_key is None:
-            continue
-        spec = catalog.get(level_series_key)
-        if spec is None:
-            continue
-        series_code = _as_text(getattr(spec, "level", None))
-        fred_id = _as_text((getattr(spec, "fred_ids", None) or {}).get("level"))
-        if series_code is None or fred_id is None or series_code in available_codes:
-            continue
+    for sector_key, series_keys in sorted(referenced_series_keys.items()):
+        for series_key in sorted(series_keys):
+            spec = catalog.get(series_key)
+            if spec is None:
+                continue
+            for field in ("level", "transactions", "revaluation"):
+                series_code = _as_text(getattr(spec, field, None))
+                fred_id = _as_text((getattr(spec, "fred_ids", None) or {}).get(field)) or _default_z1_fred_series_id(series_code)
+                if series_code is None or fred_id is None or series_code in available_codes:
+                    continue
 
-        payload = fetch_fred_series_observations(fred_id)
-        frame = normalize_fred_observations(payload, value_name="value", frequency_suffix="Q")
-        if frame.empty or frame["value"].notna().sum() == 0:
-            continue
+                payload = fetch_fred_series_observations(fred_id)
+                frame = normalize_fred_observations(payload, value_name="value", frequency_suffix="Q")
+                if frame.empty or frame["value"].notna().sum() == 0:
+                    continue
 
-        supplement = frame[["date", "value"]].copy()
-        supplement["series_code"] = series_code
-        supplement = supplement[["series_code", "date", "value"]]
-        supplement_frames.append(supplement)
-        supplemented_sector_keys.append(sector_key)
-        supplemented_series_codes.append(series_code)
-        supplemented_level_rows.extend(
-            {
-                "sector_key": sector_key,
-                "series_code": series_code,
-                "date": pd.Timestamp(date).normalize(),
-                "level_source_provider_used": "fred_level_supplement",
-                "level_supplemented_from_fred": True,
-            }
-            for date in supplement["date"].dropna().unique()
-        )
-        available_codes.add(series_code)
+                supplement = frame[["date", "value"]].copy()
+                supplement["series_code"] = series_code
+                supplement = supplement[["series_code", "date", "value"]]
+                supplement_frames.append(supplement)
+                supplemented_sector_keys.append(sector_key)
+                supplemented_series_codes.append(series_code)
+                if field == "level":
+                    supplemented_level_rows.extend(
+                        {
+                            "sector_key": sector_key,
+                            "series_code": series_code,
+                            "date": pd.Timestamp(date).normalize(),
+                            "level_source_provider_used": "fred_level_supplement",
+                            "level_supplemented_from_fred": True,
+                        }
+                        for date in supplement["date"].dropna().unique()
+                    )
+                available_codes.add(series_code)
 
     if supplement_frames:
         base_long_df = pd.concat([base_long_df, *supplement_frames], ignore_index=True)
@@ -1448,13 +1472,13 @@ def _build_required_sector_inventory(
             }
         return {
             f"{prefix}_date": _date_or_none(row.get("date")),
-            f"{prefix}_backfilled": bool(row.get("history_preserving_backfill", False)),
-            f"{prefix}_short_window_estimated": bool(row.get("row_is_short_window_estimate", False)),
-            f"{prefix}_short_window_origin": bool(row.get("estimate_origin_includes_short_window_promotion", False)),
+            f"{prefix}_backfilled": _as_bool(row.get("history_preserving_backfill", False)),
+            f"{prefix}_short_window_estimated": _as_bool(row.get("row_is_short_window_estimate", False)),
+            f"{prefix}_short_window_origin": _as_bool(row.get("estimate_origin_includes_short_window_promotion", False)),
             f"{prefix}_estimand_class": _as_text(row.get("estimand_class")),
             f"{prefix}_estimator_family": _as_text(row.get("estimator_family")),
             f"{prefix}_level_source_provider_used": _as_text(row.get("level_source_provider_used")),
-            f"{prefix}_level_supplemented_from_fred": bool(row.get("level_supplemented_from_fred", False)),
+            f"{prefix}_level_supplemented_from_fred": _as_bool(row.get("level_supplemented_from_fred", False)),
             f"{prefix}_point_estimate_origin": _as_text(row.get("point_estimate_origin")),
             f"{prefix}_interval_origin": _as_text(row.get("interval_origin")),
             f"{prefix}_publication_status": _as_text(row.get("publication_status")),
@@ -1569,12 +1593,12 @@ def _build_required_sector_inventory(
                 "bills_rows_available": int(sector_rows_all["bills_level"].notna().sum()) if "bills_level" in sector_rows_all.columns else 0,
                 "history_row_count": int(len(publication_rows)),
                 "canonical_row_count": int(len(canonical_rows)),
-                "history_preserving_backfill_rows": int(canonical_rows["history_preserving_backfill"].fillna(False).sum()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else 0,
-                "short_window_estimate_rows": int(canonical_rows["row_is_short_window_estimate"].fillna(False).sum()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else 0,
-                "short_window_origin_rows": int(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).sum()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else 0,
-                "ever_backfilled": bool(canonical_rows["history_preserving_backfill"].fillna(False).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
-                "ever_short_window_estimated": bool(canonical_rows["row_is_short_window_estimate"].fillna(False).any()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else False,
-                "ever_short_window_origin": bool(canonical_rows["estimate_origin_includes_short_window_promotion"].fillna(False).any()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else False,
+                "history_preserving_backfill_rows": int(canonical_rows["history_preserving_backfill"].map(_as_bool).sum()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else 0,
+                "short_window_estimate_rows": int(canonical_rows["row_is_short_window_estimate"].map(_as_bool).sum()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else 0,
+                "short_window_origin_rows": int(canonical_rows["estimate_origin_includes_short_window_promotion"].map(_as_bool).sum()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else 0,
+                "ever_backfilled": bool(canonical_rows["history_preserving_backfill"].map(_as_bool).any()) if not canonical_rows.empty and "history_preserving_backfill" in canonical_rows.columns else False,
+                "ever_short_window_estimated": bool(canonical_rows["row_is_short_window_estimate"].map(_as_bool).any()) if not canonical_rows.empty and "row_is_short_window_estimate" in canonical_rows.columns else False,
+                "ever_short_window_origin": bool(canonical_rows["estimate_origin_includes_short_window_promotion"].map(_as_bool).any()) if not canonical_rows.empty and "estimate_origin_includes_short_window_promotion" in canonical_rows.columns else False,
                 **latest_emitted_fields,
                 **latest_published_fields,
             }
@@ -2417,8 +2441,15 @@ def _project_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         "estimate_origin_includes_short_window_promotion",
     ]:
         if column in subset.columns:
-            subset[column] = subset[column].fillna(False).astype(bool)
+            subset[column] = subset[column].map(_as_bool)
     return subset[columns].copy()
+
+
+def _remove_legacy_release_artifacts(out_dir: Path) -> None:
+    for name in LEGACY_RELEASE_ARTIFACT_NAMES:
+        path = out_dir / name
+        if path.exists():
+            path.unlink()
 
 
 def _markdown_cell(value: Any) -> str:
@@ -2455,6 +2486,20 @@ def _as_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _as_bool(value: Any) -> bool:
+    if value is None or pd.isna(value):
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "0", "false", "f", "no", "n"}:
+            return False
+        if normalized in {"1", "true", "t", "yes", "y"}:
+            return True
+    return bool(value)
 
 
 def _date_or_none(value: Any) -> str | None:
