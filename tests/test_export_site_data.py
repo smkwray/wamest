@@ -46,6 +46,8 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
                 "zero_coupon_equivalent_years": 9.56,
                 "bill_share_lower": 0.05,
                 "bill_share_upper": 0.07,
+                "zero_coupon_equivalent_years_lower": 9.10,
+                "zero_coupon_equivalent_years_upper": 10.05,
                 "level_evidence_tier": "A",
                 "maturity_evidence_tier": "A",
                 "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
@@ -71,6 +73,8 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
                 "zero_coupon_equivalent_years": 7.26,
                 "bill_share_lower": 0.00,
                 "bill_share_upper": 0.60,
+                "zero_coupon_equivalent_years_lower": 3.20,
+                "zero_coupon_equivalent_years_upper": 11.80,
                 "level_evidence_tier": "A",
                 "maturity_evidence_tier": "C",
                 "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
@@ -99,6 +103,20 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
                 "bill_share": 0.173,
                 "level": 4.1e12,
             }
+        ]
+    )
+    fed_interval_calibration = pd.DataFrame(
+        [
+            {
+                "date": "2025-09-30",
+                "bill_share_abs_error": 0.0123,
+                "zero_coupon_equivalent_years_abs_error": 0.4567,
+            },
+            {
+                "date": "2025-12-31",
+                "bill_share_abs_error": 0.0456,
+                "zero_coupon_equivalent_years_abs_error": 0.8912,
+            },
         ]
     )
     inventory = pd.DataFrame(
@@ -148,6 +166,8 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
 
     module.FC_DIR = fc_dir
     module.OUT = out
+    module.FED_INTERVAL_CALIBRATION = tmp_path / "fed_interval_calibration_full.csv"
+    fed_interval_calibration.to_csv(module.FED_INTERVAL_CALIBRATION, index=False)
     module.main()
 
     site_data = json.loads(out.read_text())
@@ -161,6 +181,8 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     assert fed["high_confidence"] is True
     assert fed["bill_share_low_information"] is False
     assert fed["maturity_low_identification"] is False
+    assert fed["maturity_lower"] == 9.1
+    assert fed["maturity_upper"] == 10.05
     assert fed["revaluation_source_observed"] is True
     assert fed["sector_family"] == "official"
     assert fed["source_revaluation_code_present"] is True
@@ -176,3 +198,14 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     assert weak["revaluation_source_observed"] is False
     assert weak["concept_risk"] == "high"
     assert weak["source_revaluation_code_present"] is False
+
+    validation = site_data["validation"]["fed_calibration"]
+    assert validation["dates"] == ["2025-09-30", "2025-12-31"]
+    assert validation["bill_share_abs_error"] == [0.0123, 0.0456]
+    assert validation["maturity_abs_error"] == [0.4567, 0.8912]
+    assert validation["summary"]["bill_share_median_ae"] == 0.029
+    assert validation["summary"]["bill_share_p90_ae"] == 0.0423
+    assert validation["summary"]["bill_share_max_ae"] == 0.0456
+    assert validation["summary"]["maturity_median_ae"] == 0.674
+    assert validation["summary"]["maturity_p90_ae"] == 0.8478
+    assert validation["summary"]["maturity_max_ae"] == 0.8912

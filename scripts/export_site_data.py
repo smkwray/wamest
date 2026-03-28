@@ -11,6 +11,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FC_DIR = PROJECT_ROOT / "outputs" / "full_coverage_release"
 OUT = PROJECT_ROOT / "web" / "public" / "data" / "site_data.json"
+FED_INTERVAL_CALIBRATION = PROJECT_ROOT / "data" / "processed" / "fed_interval_calibration_full.csv"
 
 HUMAN_SECTOR_NAMES = {
     "fed": "Federal Reserve (SOMA)",
@@ -100,6 +101,47 @@ def maturity_low_identification(row: pd.Series, bill_share_low_info: bool) -> tu
     return False, ""
 
 
+def _safe_quantile(values: pd.Series, q: float) -> float | None:
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return None
+    return safe_val(float(numeric.quantile(q)))
+
+
+def build_validation_export() -> dict[str, object]:
+    if not FED_INTERVAL_CALIBRATION.exists():
+        return {"fed_calibration": {"dates": [], "bill_share_abs_error": [], "maturity_abs_error": [], "summary": {}}}
+
+    calibration = pd.read_csv(FED_INTERVAL_CALIBRATION)
+    required_cols = {"date", "bill_share_abs_error", "zero_coupon_equivalent_years_abs_error"}
+    if not required_cols.issubset(calibration.columns):
+        return {"fed_calibration": {"dates": [], "bill_share_abs_error": [], "maturity_abs_error": [], "summary": {}}}
+
+    valid = calibration[
+        calibration["bill_share_abs_error"].notna() & calibration["zero_coupon_equivalent_years_abs_error"].notna()
+    ].copy()
+    valid = valid.sort_values("date")
+
+    bill_abs_error = pd.to_numeric(valid["bill_share_abs_error"], errors="coerce")
+    maturity_abs_error = pd.to_numeric(valid["zero_coupon_equivalent_years_abs_error"], errors="coerce")
+
+    return {
+        "fed_calibration": {
+            "dates": valid["date"].astype(str).tolist(),
+            "bill_share_abs_error": [safe_val(v) for v in bill_abs_error],
+            "maturity_abs_error": [safe_val(v) for v in maturity_abs_error],
+            "summary": {
+                "bill_share_median_ae": _safe_quantile(bill_abs_error, 0.5),
+                "bill_share_p90_ae": _safe_quantile(bill_abs_error, 0.9),
+                "bill_share_max_ae": safe_val(float(bill_abs_error.max())) if bill_abs_error.notna().any() else None,
+                "maturity_median_ae": _safe_quantile(maturity_abs_error, 0.5),
+                "maturity_p90_ae": _safe_quantile(maturity_abs_error, 0.9),
+                "maturity_max_ae": safe_val(float(maturity_abs_error.max())) if maturity_abs_error.notna().any() else None,
+            },
+        }
+    }
+
+
 def main() -> None:
     if not FC_DIR.exists():
         print(f"Run 'make full-coverage-contract' first — {FC_DIR} not found", file=sys.stderr)
@@ -156,6 +198,8 @@ def main() -> None:
             "maturity": safe_val(row.get("zero_coupon_equivalent_years")),
             "bill_share_lower": safe_val(row.get("bill_share_lower")),
             "bill_share_upper": safe_val(row.get("bill_share_upper")),
+            "maturity_lower": safe_val(row.get("zero_coupon_equivalent_years_lower")),
+            "maturity_upper": safe_val(row.get("zero_coupon_equivalent_years_upper")),
             "bill_share_interval_width": safe_val(interval_width),
             "bill_share_low_information": low_info_flag,
             "bill_share_low_information_reason": low_info_reason,
@@ -301,6 +345,7 @@ def main() -> None:
         "time_series": time_series,
         "fed_comparison": fed_compare,
         "soma_exact": soma_ts,
+        "validation": build_validation_export(),
         "evidence_tiers": tier_counts,
         "inventory": inv_summary,
         "build_info": {

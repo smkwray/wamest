@@ -167,6 +167,16 @@ class _BuiltSectorInputs:
     catalog: dict[str, Any]
 
 
+def _has_observed_revaluation_signal(values: pd.Series | None) -> bool:
+    if values is None:
+        return False
+
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return False
+    return bool(float(numeric.std(ddof=0)) > LOW_SIGNAL_STD_THRESHOLD)
+
+
 def build_full_coverage_release(
     *,
     out_dir: str | Path = DEFAULT_RELEASE_DIR,
@@ -779,7 +789,12 @@ def _attach_revaluation_source_observed(
         revaluation_codes = [_as_text(getattr(spec, "revaluation", None)) for spec in leaf_specs]
         source_available[sector_key] = any(code and code in observed_codes for code in revaluation_codes)
 
-    out["revaluation_source_observed"] = out["sector_key"].astype(str).map(source_available).fillna(False).astype(bool)
+    direct_source_observed = out["sector_key"].astype(str).map(source_available).fillna(False).astype(bool)
+    if "revaluation_source_observed" in out.columns:
+        existing = out["revaluation_source_observed"].fillna(False).astype(bool)
+    else:
+        existing = pd.Series(False, index=out.index, dtype=bool)
+    out["revaluation_source_observed"] = (existing | direct_source_observed).astype(bool)
     return out
 
 
@@ -1230,7 +1245,6 @@ def _apply_low_identification_overrides(
     out["fallback_peer_group"] = out["sector_key"].map(PEER_GROUP_BY_SECTOR)
     out["fallback_peer_count"] = pd.NA
     out["fallback_reason"] = pd.NA
-    out["revaluation_source_observed"] = out["_raw_revaluation"].notna()
 
     signal_std = (
         pd.to_numeric(out["revaluation_signal_std_window"], errors="coerce")
@@ -1238,6 +1252,7 @@ def _apply_low_identification_overrides(
         else pd.Series(np.nan, index=out.index, dtype=float)
     )
     low_signal = signal_std.fillna(0.0) <= LOW_SIGNAL_STD_THRESHOLD
+    out["revaluation_source_observed"] = out["_raw_revaluation"].notna() & ~low_signal
     no_direct_short_end_support = (
         out["bill_share_observed"].isna()
         & out["exact_bill_share_support"].isna()
@@ -2043,13 +2058,18 @@ def _build_required_sector_inventory(
         bills_fred_id = _as_text((getattr(bills_spec, "fred_ids", None) or {}).get("level")) if bills_spec is not None else None
         level_code_present = bool(level_source_code and level_source_code in raw_available_codes)
         transactions_code_present = bool(transactions_source_code and transactions_source_code in raw_available_codes)
-        revaluation_code_present = bool(revaluation_source_code and revaluation_source_code in raw_available_codes)
         bills_code_present = bool(bills_source_code and bills_source_code in raw_available_codes)
         post_supplement_level_code_present = bool(level_source_code and level_source_code in available_codes)
         same_base_codes = _same_base_source_codes(raw_available_codes, base_code)
         sector_rows_all = sector_panel[
             sector_panel["sector_key"].astype(str).eq(sector_key)
         ].copy()
+        revaluation_code_present = bool(
+            revaluation_source_code and (
+                revaluation_source_code in raw_available_codes
+                or _has_observed_revaluation_signal(sector_rows_all.get("revaluation"))
+            )
+        )
         range_row = publication_lookup.get(str(sector_key), {})
         publication_rows = _publication_range_frame(
             sector_panel=sector_rows_all,

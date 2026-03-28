@@ -17,6 +17,8 @@ export interface SiteData {
     maturity: number | null;
     bill_share_lower: number | null;
     bill_share_upper: number | null;
+    maturity_lower: number | null;
+    maturity_upper: number | null;
     level_tier: string;
     maturity_tier: string;
     method: string;
@@ -63,6 +65,21 @@ export interface SiteData {
     duration_years: (number | null)[];
     bill_share: (number | null)[];
     holdings_trillions: (number | null)[];
+  };
+  validation?: {
+    fed_calibration: {
+      dates: string[];
+      bill_share_abs_error: (number | null)[];
+      maturity_abs_error: (number | null)[];
+      summary: {
+        bill_share_median_ae: number;
+        bill_share_p90_ae: number;
+        bill_share_max_ae: number;
+        maturity_median_ae: number;
+        maturity_p90_ae: number;
+        maturity_max_ae: number;
+      };
+    };
   };
   build_info: {
     schema_version: string;

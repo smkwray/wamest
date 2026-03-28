@@ -1,4 +1,13 @@
+import { useSiteData } from "../data";
+import { useTheme, plotlyColors, TRACE_COLORS, TRACE_COLORS_DARK } from "../theme";
+import Chart from "../components/Chart";
+
 export default function Methods() {
+  const data = useSiteData();
+  const { theme } = useTheme();
+  const c = plotlyColors(theme);
+  const traces = theme === "dark" ? TRACE_COLORS_DARK : TRACE_COLORS;
+  const cal = data?.validation?.fed_calibration;
   return (
     <div className="page">
       <h1>Methods</h1>
@@ -52,11 +61,11 @@ export default function Methods() {
           </p>
         </div>
         <div className="step">
-          <h3>Assemble release artifacts</h3>
+          <h3>Assemble outputs</h3>
           <p>
-            Produce the canonical panel, latest snapshot, high-confidence
-            subset, reconciliation nodes, Fed exact overlay, and sector
-            inventory with explicit publication-status semantics.
+            Produce the full sector panel, latest snapshot, Fed exact overlay,
+            and sector inventory. Each row carries evidence quality labels so
+            downstream consumers know what is directly observed vs. inferred.
           </p>
         </div>
       </div>
@@ -101,6 +110,81 @@ export default function Methods() {
         <li><strong>Calibration transfer is an assumption.</strong> Fed/SOMA error patterns may not transfer perfectly to sectors with different portfolios.</li>
         <li><strong>Foreign anchors are periodic.</strong> Between annual SHL surveys, maturity relies on interpolation with assumption bands.</li>
       </ul>
+
+      {cal && cal.dates.length > 0 && (
+        <>
+          <h2>SOMA Calibration Quality</h2>
+          <p className="section-desc">
+            Absolute error between the revaluation-inferred estimate and the
+            exact SOMA portfolio on dates where both are available. This is how
+            the pipeline measures its own accuracy.
+          </p>
+          <div className="chart-box">
+            <Chart
+              data={[
+                {
+                  type: "scatter", mode: "lines+markers",
+                  name: "Bill Share Error",
+                  x: cal.dates,
+                  y: cal.bill_share_abs_error.map((v) => v != null ? v * 100 : null),
+                  line: { color: traces[1], width: 2 },
+                  marker: { size: 5, color: traces[1] },
+                  hovertemplate: "%{x}<br>Bill share error: %{y:.1f} pp<extra></extra>",
+                },
+                {
+                  type: "scatter", mode: "lines+markers",
+                  name: "Maturity Error (yrs)",
+                  x: cal.dates,
+                  y: cal.maturity_abs_error,
+                  line: { color: traces[0], width: 2 },
+                  marker: { size: 5, color: traces[0] },
+                  yaxis: "y2",
+                  hovertemplate: "%{x}<br>Maturity error: %{y:.2f} years<extra></extra>",
+                },
+              ]}
+              layout={{
+                font: { family: "Inter, system-ui, sans-serif", color: c.text, size: 12 },
+                paper_bgcolor: c.paper, plot_bgcolor: c.bg,
+                margin: { l: 55, r: 55, t: 10, b: 40 },
+                height: 320,
+                xaxis: { gridcolor: c.grid, color: c.text },
+                yaxis: { title: "Bill Share Error (pp)", gridcolor: c.grid, color: c.text },
+                yaxis2: { title: "Maturity Error (yrs)", overlaying: "y", side: "right", color: c.text, showgrid: false },
+                legend: { orientation: "h" as const, y: -0.18, font: { size: 11, color: c.text } },
+                hoverlabel: { bgcolor: c.hover_bg, font: { color: c.hover_font, size: 12 } },
+              }}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: "100%" }}
+            />
+          </div>
+          <div className="cal-summary">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Median</th>
+                  <th>90th pctl</th>
+                  <th>Max</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Bill share absolute error</td>
+                  <td>{(cal.summary.bill_share_median_ae * 100).toFixed(1)} pp</td>
+                  <td>{(cal.summary.bill_share_p90_ae * 100).toFixed(1)} pp</td>
+                  <td>{(cal.summary.bill_share_max_ae * 100).toFixed(1)} pp</td>
+                </tr>
+                <tr>
+                  <td>Maturity absolute error</td>
+                  <td>{cal.summary.maturity_median_ae.toFixed(2)} yrs</td>
+                  <td>{cal.summary.maturity_p90_ae.toFixed(2)} yrs</td>
+                  <td>{cal.summary.maturity_max_ae.toFixed(2)} yrs</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       <h2>Interpretation</h2>
       <p>

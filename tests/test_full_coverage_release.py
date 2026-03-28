@@ -1022,6 +1022,66 @@ def test_required_sector_inventory_splits_latest_emitted_from_latest_published_f
     assert bool(fed_row["latest_published_backfilled"]) is True
 
 
+def test_required_sector_inventory_marks_observed_revaluation_signal_presence():
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    inventory_builder = getattr(module, "_build_required_sector_inventory")
+
+    coverage_registry = module.load_coverage_registry(FULL_CATALOG.parent / "coverage_registry.yaml")
+    sector_defs = module.load_yaml(FULL_SECTOR_DEFS).get("sectors") or {}
+    catalog = load_series_catalog(FULL_CATALOG)
+
+    canonical = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31", "2025-09-30", "2025-12-31"]),
+            "sector_key": ["fed", "fed", "other_financial_business", "other_financial_business"],
+            "publication_status": ["published_estimate"] * 4,
+            "publication_status_reason": ["ok"] * 4,
+            "history_preserving_backfill": [False] * 4,
+            "row_is_short_window_estimate": [False] * 4,
+            "estimate_origin_includes_short_window_promotion": [False] * 4,
+            "in_publication_range": [True] * 4,
+        }
+    )
+    sector_panel = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-09-30", "2025-12-31", "2025-09-30", "2025-12-31"]),
+            "sector_key": ["fed", "fed", "other_financial_business", "other_financial_business"],
+            "level": [1.0, 1.1, 2.0, 2.1],
+            "transactions": [0.1, 0.12, 0.2, 0.25],
+            "revaluation": [0.01, 0.03, 0.0, 0.0],
+            "bills_level": [0.3, 0.31, 0.1, 0.1],
+        }
+    )
+    publication_ranges = pd.DataFrame(
+        {
+            "sector_key": ["fed", "other_financial_business"],
+            "first_level_date": ["2025-09-30", "2025-09-30"],
+            "latest_level_date": ["2025-12-31", "2025-12-31"],
+            "first_publishable_estimate_date": ["2025-09-30", "2025-09-30"],
+            "latest_publishable_estimate_date": ["2025-12-31", "2025-12-31"],
+            "first_publication_date": ["2025-09-30", "2025-09-30"],
+            "latest_publication_date": ["2025-12-31", "2025-12-31"],
+        }
+    )
+
+    inventory = inventory_builder(
+        canonical=canonical,
+        sector_panel=sector_panel,
+        publication_ranges=publication_ranges,
+        sector_definitions=sector_defs,
+        coverage_registry=coverage_registry,
+        catalog=catalog,
+        raw_long_df=pd.DataFrame(columns=["series_code", "date", "value"]),
+        long_df=pd.DataFrame(columns=["series_code", "date", "value"]),
+    )
+
+    fed_row = inventory[inventory["sector_key"] == "fed"].iloc[0]
+    weak_row = inventory[inventory["sector_key"] == "other_financial_business"].iloc[0]
+
+    assert bool(fed_row["source_revaluation_code_present"]) is True
+    assert bool(weak_row["source_revaluation_code_present"]) is False
+
+
 def test_annotate_publication_status_suppresses_pre_2002_uniform_regime():
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
 

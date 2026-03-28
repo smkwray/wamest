@@ -37,7 +37,7 @@ export default function Home() {
   if (!data) return <div className="loading">Loading results...</div>;
 
   const { hero, snapshot, time_series, fed_comparison } = data;
-  const somaData = (data as any).soma_exact;
+  const somaData = data.soma_exact;
 
   // --- Quality-based colors ---
   const qColor = (q: Quality) =>
@@ -72,15 +72,19 @@ export default function Home() {
       const ts = time_series[name];
       const idx = ts.dates.indexOf(selectedDate);
       const snap = snapshot.find((s) => s.sector === name);
+      const isSnapshot = selectedDate === hero.snapshot_quarter;
       return {
         sector: name,
         maturity: idx >= 0 ? ts.maturity[idx] : null,
+        maturity_lower: isSnapshot ? (snap?.maturity_lower ?? null) : null,
+        maturity_upper: isSnapshot ? (snap?.maturity_upper ?? null) : null,
         quality: snap ? getQuality(snap) : ("estimated" as Quality),
         fallback_peer_group: snap?.fallback_peer_group || "",
         fallback_reason: snap?.fallback_reason || "",
         maturity_low_id: snap?.maturity_low_identification ?? false,
         point_origin: snap?.point_estimate_origin || "",
         interval_origin: snap?.interval_origin || "",
+        reval_observed: snap?.revaluation_source_observed ?? false,
       };
     })
     .filter((d): d is typeof d & { maturity: number } => d.maturity != null && d.maturity > 0.01)
@@ -205,12 +209,30 @@ export default function Home() {
                 type: "bar", orientation: "h",
                 y: matAtDate.map((d) => d.sector),
                 x: matAtDate.map((d) => d.maturity),
+                error_x: {
+                  type: "data", symmetric: false,
+                  array: matAtDate.map((d) => {
+                    if (d.maturity_upper == null) return 0;
+                    const diff = d.maturity_upper - d.maturity;
+                    return diff > 0.05 ? diff : 0;
+                  }),
+                  arrayminus: matAtDate.map((d) => {
+                    if (d.maturity_lower == null) return 0;
+                    const diff = d.maturity - d.maturity_lower;
+                    return diff > 0.05 ? diff : 0;
+                  }),
+                  color: c.text, thickness: 1.5,
+                },
                 marker: { color: matAtDate.map((d) => qColor(d.quality)) },
                 hovertemplate: matAtDate.map((d) => {
                   const q = QUALITY_LABEL[d.quality];
-                  let t = `${d.sector}<br>Maturity: ${d.maturity.toFixed(2)} years<br>${q}`;
+                  let t = `${d.sector}<br>Maturity: ${d.maturity.toFixed(2)} years`;
+                  if (d.maturity_lower != null && d.maturity_upper != null && d.maturity_upper - d.maturity_lower > 0.05)
+                    t += ` [${d.maturity_lower.toFixed(1)}\u2013${d.maturity_upper.toFixed(1)}]`;
+                  t += `<br>${q}`;
                   if (d.point_origin) t += `<br>Origin: ${d.point_origin.replace(/_/g, " ")}`;
                   if (d.fallback_peer_group) t += `<br>Peer group: ${d.fallback_peer_group.replace(/_/g, " ")}`;
+                  if (d.reval_observed) t += `<br>Revaluation: directly observed`;
                   if (d.maturity_low_id) t += `<br>⚠ Low identification`;
                   return t + "<extra></extra>";
                 }),
@@ -484,7 +506,12 @@ export default function Home() {
                         {s.sector}
                         {s.maturity_low_identification && <span className="low-id" title={s.maturity_low_identification_reason?.replace(/_/g, " ") || "Low identification"}> *</span>}
                       </td>
-                      <td>{s.maturity != null ? s.maturity.toFixed(2) : "\u2014"}</td>
+                      <td>
+                        {s.maturity != null ? s.maturity.toFixed(2) : "\u2014"}
+                        {s.maturity_lower != null && s.maturity_upper != null && s.maturity_upper - s.maturity_lower > 0.05 && (
+                          <span className="low-id"> [{s.maturity_lower.toFixed(1)}&ndash;{s.maturity_upper.toFixed(1)}]</span>
+                        )}
+                      </td>
                       <td>
                         {s.bill_share != null ? `${(s.bill_share * 100).toFixed(1)}%` : "\u2014"}
                         {s.bill_share_lower != null && s.bill_share_upper != null && (
