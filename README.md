@@ -1,6 +1,6 @@
 # WAMEST — Treasury Sector Maturity Estimation
 
-> **[Live site →](https://smkwray.github.io/wamest/)** · [GitHub](https://github.com/smkwray/wamest)
+> **[Live site →](https://smkwray.github.io/wamest/)**
 
 Quarterly estimates of maturity structure, bill share, and short-vs-long composition for every holder sector in the Federal Reserve's Z.1 Financial Accounts — using only free public data.
 
