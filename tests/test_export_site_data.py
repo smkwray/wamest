@@ -177,7 +177,6 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     assert fed["method"] == "rolling_benchmark_weights_plus_factors"
     assert fed["point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     assert fed["interval_origin"] == "fed_soma_calibrated_uncertainty_band"
-    assert fed["publication_status"] == "published_estimate"
     assert fed["high_confidence"] is True
     assert fed["bill_share_low_information"] is False
     assert fed["maturity_low_identification"] is False
@@ -185,7 +184,13 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     assert fed["maturity_upper"] == 10.05
     assert fed["revaluation_source_observed"] is True
     assert fed["sector_family"] == "official"
-    assert fed["source_revaluation_code_present"] is True
+    # Internal fields should not be exported
+    assert "publication_status" not in fed
+    assert "estimator_family" not in fed
+    assert "window_obs" not in fed
+    assert "fit_rmse_window" not in fed
+    assert "source_revaluation_code_present" not in fed
+    assert "source_bills_code_present" not in fed
 
     assert weak["bill_share_interval_width"] == 0.6
     assert weak["bill_share_low_information"] is True
@@ -193,11 +198,18 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     assert weak["maturity_low_identification"] is True
     assert weak["maturity_low_identification_reason"] == "revaluation_signal_near_zero"
     assert weak["fallback_peer_group"] == "other_financial"
-    assert weak["fallback_peer_count"] == 3
     assert weak["fallback_reason"] == "peer_group_envelope_for_low_confidence_interval"
     assert weak["revaluation_source_observed"] is False
     assert weak["concept_risk"] == "high"
-    assert weak["source_revaluation_code_present"] is False
+    assert "fallback_peer_count" not in weak
+
+    # Inventory tiers should be populated from snapshot cross-reference
+    fed_inv = next(item for item in site_data["inventory"] if item["sector_key"] == "fed")
+    assert fed_inv["level_tier"] == "A"
+    assert fed_inv["maturity_tier"] == "A"
+    weak_inv = next(item for item in site_data["inventory"] if item["sector_key"] == "holding_companies")
+    assert weak_inv["level_tier"] == "A"
+    assert weak_inv["maturity_tier"] == "C"
 
     validation = site_data["validation"]["fed_calibration"]
     assert validation["dates"] == ["2025-09-30", "2025-12-31"]

@@ -116,8 +116,10 @@ export default function Methods() {
           <h2>SOMA Calibration Quality</h2>
           <p className="section-desc">
             Absolute error between the revaluation-inferred estimate and the
-            exact SOMA portfolio on dates where both are available. This is how
-            the pipeline measures its own accuracy.
+            exact SOMA portfolio on {cal.dates.length} dates where both are
+            available. This validates the estimation method against the Fed/SOMA
+            anchor — the only sector with security-level truth. Calibration
+            transfer to other sectors is an assumption, not a guarantee.
           </p>
           <div className="chart-box">
             <Chart

@@ -2,11 +2,11 @@
 
 > **[Live site →](https://smkwray.github.io/wamest/)**
 
-Quarterly estimates of maturity structure, bill share, and short-vs-long composition for every holder sector in the Federal Reserve's Z.1 Financial Accounts — using only free public data.
+Quarterly estimates of maturity structure and bill share for every holder sector in the Federal Reserve's Z.1 Financial Accounts — using only free public data.
 
 ## What this is
 
-WAMEST infers the maturity exposure of each U.S. Treasury holder sector — whether they lean toward short-dated bills, long-dated coupons, or something in between — by analyzing revaluation behavior in the Z.1 Financial Accounts, calibrated against the Fed's exact SOMA portfolio. It covers 26 sectors — the Fed, foreign holders, banks, insurers, pensions, mutual funds, households, and more — with estimates going back to 2002.
+WAMEST infers the maturity exposure of each U.S. Treasury holder sector by analyzing revaluation behavior in the Z.1 Financial Accounts, calibrated against the Fed's exact SOMA portfolio. It covers 26 sectors — the Fed, foreign holders, banks, insurers, pensions, mutual funds, households, and more — with estimates going back to 2002.
 
 All inputs are free public data: the Fed's Z.1 release, H.15 constant-maturity yields, SOMA holdings, and Treasury International Capital (TIC) survey data.
 
@@ -20,7 +20,7 @@ This is a **public research project**, not a finished product. The repo is expli
 4. **Estimate maturity** by fitting each sector's revaluation behavior to benchmark price-return ladders
 5. **Produce uncertainty bands** calibrated from SOMA estimation error, with peer-group envelopes for weaker sectors
 
-The [live site](https://smkwray.github.io/wamest/) shows interactive visualizations of all results, including a date slider to explore how maturity structure has changed over time.
+The [live site](https://smkwray.github.io/wamest/) shows interactive visualizations of all results, including a date slider to explore how maturity structure has changed over time. The Methods page includes a SOMA calibration section showing the pipeline's estimation error against the Fed's exact holdings.
 
 ## Estimate quality
 
@@ -58,15 +58,15 @@ make toy PYTHON=python3
 ## Full-coverage release
 
 ```bash
-# Deterministic contract build (toy inputs, no API key needed)
+# Reproducible build from toy inputs (no API key needed)
 make full-coverage-contract PYTHON=python3
 
-# Live release build (requires free FRED API key)
+# Live build from real data (requires free FRED API key)
 export FRED_API_KEY=your_key_here
 make full-coverage-release PYTHON=python3
 ```
 
-A free FRED API key is available from [fred.stlouisfed.org](https://fred.stlouisfed.org/docs/api/api_key.html). The contract build uses toy fixtures and needs no key.
+A free FRED API key is available from [fred.stlouisfed.org](https://fred.stlouisfed.org/docs/api/api_key.html). The reproducible build uses toy fixtures and needs no key.
 
 ## Frontend
 
@@ -98,8 +98,8 @@ web/           Frontend site (Vite + React + TypeScript)
 
 ## Docs
 
-- [Output schema](docs/output_schema.md) — artifact contract
-- [Full-coverage schema](docs/full_coverage_output_schema.md) — full-coverage artifact contract
+- [Output schema](docs/output_schema.md) — output format and fields
+- [Full-coverage schema](docs/full_coverage_output_schema.md) — full-coverage output format
 - [Source notes](docs/source_notes.md) — public data sources and roles
 - [Release limitations](docs/release_limitations.md) — what is not promised
 - [Release notes](docs/release_notes.md) — change summaries

@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useSiteData, type SiteData } from "../data";
 import { useTheme, plotlyColors, TRACE_COLORS, TRACE_COLORS_DARK } from "../theme";
 import Chart from "../components/Chart";
+
+function useBarLayout() {
+  const narrow = typeof window !== "undefined" && window.innerWidth < 640;
+  const margin = narrow ? 140 : 260;
+  const truncate = useCallback(
+    (name: string) => (narrow && name.length > 18 ? name.slice(0, 17) + "\u2026" : name),
+    [narrow],
+  );
+  return { margin, truncate };
+}
 
 type Snap = SiteData["snapshot"][number];
 type Quality = "exact" | "estimated" | "fallback";
@@ -30,6 +40,7 @@ export default function Home() {
   const c = plotlyColors(theme);
   const traces = theme === "dark" ? TRACE_COLORS_DARK : TRACE_COLORS;
 
+  const { margin: barMarginL, truncate: truncLabel } = useBarLayout();
   const [dateIdx, setDateIdx] = useState<number | null>(null);
   const [tsOverride, setTsOverride] = useState<string[] | null>(null);
   const [scatterOverride, setScatterOverride] = useState<string[] | null>(null);
@@ -130,7 +141,10 @@ export default function Home() {
       t += ` [${(s.bill_share_lower * 100).toFixed(1)}, ${(s.bill_share_upper * 100).toFixed(1)}]`;
     const q = QUALITY_LABEL[getQuality(s)];
     t += `<br>${q}`;
+    if (s.point_estimate_origin) t += `<br>Origin: ${s.point_estimate_origin.replace(/_/g, " ")}`;
+    if (s.fallback_peer_group) t += `<br>Peer group: ${s.fallback_peer_group.replace(/_/g, " ")}`;
     if (s.interval_origin) t += `<br>Interval: ${s.interval_origin.replace(/_/g, " ")}`;
+    if (s.revaluation_source_observed) t += `<br>Revaluation: directly observed`;
     return t + "<extra></extra>";
   };
 
@@ -166,9 +180,8 @@ export default function Home() {
           <div className="hero-label">Public-Data Research</div>
           <h1>Treasury Sector Maturity Estimation</h1>
           <p className="subtitle">
-            Quarterly estimates of maturity structure, bill share, duration, and
-            short-vs-long composition across U.S. Treasury holder sectors. All
-            inputs are free public data.
+            Quarterly estimates of maturity structure and bill share across
+            U.S. Treasury holder sectors. All inputs are free public data.
           </p>
           <div className="stats-bar">
             <div className="stat"><div className="stat-value">{sectorCount}</div><div className="stat-label">Sectors</div></div>
@@ -207,7 +220,7 @@ export default function Home() {
             <Chart
               data={[{
                 type: "bar", orientation: "h",
-                y: matAtDate.map((d) => d.sector),
+                y: matAtDate.map((d) => truncLabel(d.sector)),
                 x: matAtDate.map((d) => d.maturity),
                 error_x: {
                   type: "data", symmetric: false,
@@ -239,7 +252,7 @@ export default function Home() {
               }]}
               layout={layout("", {
                 height: Math.max(500, matAtDate.length * 26),
-                margin: { l: 260, r: 30, t: 10, b: 40 },
+                margin: { l: barMarginL, r: 30, t: 10, b: 40 },
                 xaxis: { title: "Years", gridcolor: c.grid, color: c.text },
                 yaxis: { autorange: "reversed" as const, color: c.text },
               })}
@@ -274,7 +287,7 @@ export default function Home() {
               <Chart
                 data={[{
                   type: "bar", orientation: "h",
-                  y: sortedByBill.map((s) => s.sector),
+                  y: sortedByBill.map((s) => truncLabel(s.sector)),
                   x: sortedByBill.map((s) => (s.bill_share ?? 0) * 100),
                   error_x: {
                     type: "data", symmetric: false,
@@ -295,7 +308,7 @@ export default function Home() {
                 }]}
                 layout={layout("", {
                   height: Math.max(500, sortedByBill.length * 26),
-                  margin: { l: 260, r: 30, t: 10, b: 40 },
+                  margin: { l: barMarginL, r: 30, t: 10, b: 40 },
                   xaxis: { title: "Bill Share (%)", gridcolor: c.grid, color: c.text },
                   yaxis: { autorange: "reversed" as const, color: c.text },
                 })}
@@ -461,7 +474,10 @@ export default function Home() {
                   hovertemplate: scatterFiltered.map((s) => {
                     const q = QUALITY_LABEL[getQuality(s)];
                     let t = `${s.sector}<br>Bill share: ${((s.bill_share ?? 0) * 100).toFixed(1)}%<br>Maturity: ${(s.maturity ?? 0).toFixed(2)} yrs<br>${q}`;
+                    if (s.point_estimate_origin) t += `<br>Origin: ${s.point_estimate_origin.replace(/_/g, " ")}`;
                     if (s.fallback_peer_group) t += `<br>Peer group: ${s.fallback_peer_group.replace(/_/g, " ")}`;
+                    if (s.interval_origin) t += `<br>Interval: ${s.interval_origin.replace(/_/g, " ")}`;
+                    if (s.revaluation_source_observed) t += `<br>Revaluation: directly observed`;
                     if (s.maturity_low_identification) t += `<br>Low identification`;
                     return t + "<extra></extra>";
                   }),

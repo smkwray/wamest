@@ -162,6 +162,15 @@ def main() -> None:
     summary = json.loads((FC_DIR / "full_coverage_summary.json").read_text())
     inventory_lookup = inventory.set_index("sector_key").to_dict(orient="index") if not inventory.empty else {}
 
+    # Cross-reference evidence tiers from snapshot into inventory (inventory CSV lacks these columns)
+    snapshot_tier_lookup = {}
+    for _, row in snapshot.iterrows():
+        sk = row.get("sector_key", "")
+        snapshot_tier_lookup[sk] = {
+            "level_evidence_tier": row.get("level_evidence_tier", ""),
+            "maturity_evidence_tier": row.get("maturity_evidence_tier", ""),
+        }
+
     # --- Hero stats ---
     cc = summary.get("coverage_completeness", {})
     sectors_covered = f"{cc.get('required_canonical_covered', '?')}/{cc.get('required_canonical_total', '?')}"
@@ -203,10 +212,6 @@ def main() -> None:
             "bill_share_interval_width": safe_val(interval_width),
             "bill_share_low_information": low_info_flag,
             "bill_share_low_information_reason": low_info_reason,
-            "window_obs": safe_val(row.get("window_obs")),
-            "fit_rmse_window": safe_val(row.get("fit_rmse_window")),
-            "revaluation_signal_std_window": safe_val(row.get("revaluation_signal_std_window")),
-            "revaluation_signal_abs_max_window": safe_val(row.get("revaluation_signal_abs_max_window")),
             "revaluation_source_observed": safe_bool(
                 inventory_row.get("source_revaluation_code_present", row.get("revaluation_source_observed", False))
             ),
@@ -215,18 +220,13 @@ def main() -> None:
             "level_tier": row.get("level_evidence_tier", ""),
             "maturity_tier": row.get("maturity_evidence_tier", ""),
             "method": row.get("method") or row.get("point_estimate_origin") or row.get("estimator_family", ""),
-            "estimator_family": row.get("estimator_family", ""),
             "point_estimate_origin": row.get("point_estimate_origin", ""),
             "interval_origin": row.get("interval_origin", ""),
             "fallback_peer_group": safe_text(row.get("fallback_peer_group", "")),
-            "fallback_peer_count": safe_val(row.get("fallback_peer_count")),
             "fallback_reason": safe_text(row.get("fallback_reason", "")),
-            "publication_status": row.get("publication_status", ""),
             "high_confidence": safe_bool(row.get("high_confidence_flag", False)),
             "sector_family": inventory_row.get("sector_family", ""),
             "concept_risk": inventory_row.get("concept_risk", ""),
-            "source_revaluation_code_present": safe_bool(inventory_row.get("source_revaluation_code_present", False)),
-            "source_bills_code_present": safe_bool(inventory_row.get("source_bills_code_present", False)),
         })
 
     # --- Time series for key sectors ---
@@ -305,11 +305,12 @@ def main() -> None:
     if not inventory.empty:
         for _, row in inventory.iterrows():
             sk = row.get("sector_key", "")
+            tier_info = snapshot_tier_lookup.get(sk, {})
             inv_summary.append({
                 "sector": human_name(sk),
                 "sector_key": sk,
-                "level_tier": row.get("level_evidence_tier", ""),
-                "maturity_tier": row.get("maturity_evidence_tier", ""),
+                "level_tier": tier_info.get("level_evidence_tier", ""),
+                "maturity_tier": tier_info.get("maturity_evidence_tier", ""),
                 "has_bills_series": bool(row.get("has_bills_series", False)),
                 "publication_start": row.get("publication_range_start", ""),
                 "publication_end": row.get("publication_range_end", ""),
