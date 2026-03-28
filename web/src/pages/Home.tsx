@@ -5,16 +5,16 @@ import { useTheme, plotlyColors, TRACE_COLORS, TRACE_COLORS_DARK } from "../them
 import Chart from "../components/Chart";
 
 type Snap = SiteData["snapshot"][number];
-type Quality = "high" | "estimated" | "fallback";
+type Quality = "exact" | "estimated" | "fallback";
 
 function getQuality(s: Snap): Quality {
-  if (s.high_confidence) return "high";
+  if (s.point_estimate_origin?.startsWith("fed_soma_exact")) return "exact";
   if (s.point_estimate_origin?.startsWith("peer_group")) return "fallback";
   return "estimated";
 }
 
 const QUALITY_LABEL: Record<Quality, string> = {
-  high: "High confidence",
+  exact: "Exact (SOMA)",
   estimated: "Estimated",
   fallback: "Peer fallback",
 };
@@ -30,6 +30,7 @@ export default function Home() {
   const c = plotlyColors(theme);
   const traces = theme === "dark" ? TRACE_COLORS_DARK : TRACE_COLORS;
 
+  const [dateIdx, setDateIdx] = useState<number | null>(null);
   const [tsOverride, setTsOverride] = useState<string[] | null>(null);
   const [scatterOverride, setScatterOverride] = useState<string[] | null>(null);
 
@@ -40,7 +41,7 @@ export default function Home() {
 
   // --- Quality-based colors ---
   const qColor = (q: Quality) =>
-    q === "high" ? (theme === "dark" ? "#6bc47a" : "#3a8a4a")
+    q === "exact" ? (theme === "dark" ? "#6bc47a" : "#3a8a4a")
     : q === "fallback" ? (theme === "dark" ? "#e0a050" : "#c07830")
     : (theme === "dark" ? "#5b9bd5" : "#3a72a4");
 
@@ -57,6 +58,29 @@ export default function Home() {
   const nameToTier: Record<string, string> = {};
   for (const s of snapshot) nameToTier[s.sector] = s.maturity_tier;
   const tsNames = Object.keys(time_series).sort();
+
+  // --- Date slider for maturity chart ---
+  const allDates = tsNames.length > 0 ? time_series[tsNames[0]].dates : [];
+  const selectedIdx = dateIdx ?? allDates.length - 1;
+  const selectedDate = allDates[selectedIdx] || hero.snapshot_quarter;
+  const formatQ = (d: string) => {
+    const p = d.split("-");
+    return `${p[0]} Q${Math.ceil(parseInt(p[1] || "12") / 3)}`;
+  };
+  const matAtDate = tsNames
+    .map((name) => {
+      const ts = time_series[name];
+      const idx = ts.dates.indexOf(selectedDate);
+      const snap = snapshot.find((s) => s.sector === name);
+      return {
+        sector: name,
+        maturity: idx >= 0 ? ts.maturity[idx] : null,
+        quality: snap ? getQuality(snap) : ("estimated" as Quality),
+      };
+    })
+    .filter((d): d is typeof d & { maturity: number } => d.maturity != null && d.maturity > 0.01)
+    .sort((a, b) => b.maturity - a.maturity);
+
   const tsActive = new Set(tsOverride ?? TS_DEFAULTS.filter((n) => n in time_series));
   const toggleTs = (name: string) => {
     setTsOverride((prev) => {
@@ -90,14 +114,6 @@ export default function Home() {
   });
 
   // --- Hover helpers ---
-  const matHover = (s: Snap) => {
-    const q = QUALITY_LABEL[getQuality(s)];
-    let t = `${s.sector}<br>Maturity: ${(s.maturity ?? 0).toFixed(1)} years<br>${q}`;
-    if (s.fallback_peer_group) t += `<br>Peer group: ${s.fallback_peer_group.replace(/_/g, " ")}`;
-    if (s.maturity_low_identification) t += `<br>Low identification`;
-    return t + "<extra></extra>";
-  };
-
   const billHover = (s: Snap) => {
     const bs = (s.bill_share ?? 0) * 100;
     let t = `${s.sector}<br>Bill share: ${bs.toFixed(1)}%`;
@@ -156,24 +172,42 @@ export default function Home() {
       </section>
 
       <div className="page page-wide">
-        {/* --- Maturity by Sector --- */}
+        {/* --- Maturity by Sector (date slider) --- */}
         <section className="section">
           <h2>Maturity Estimate by Sector</h2>
           <p className="section-desc">
-            Zero-coupon-equivalent maturity (years) at {hero.snapshot_quarter}.
-            Colors indicate estimate quality.
+            Zero-coupon-equivalent maturity (years) across all sectors.
+            Drag the slider to see how maturity structure changes over time.
           </p>
+          <div className="date-slider-container">
+            <div className="date-label">{formatQ(selectedDate)}</div>
+            <input
+              type="range"
+              className="date-slider"
+              min={0}
+              max={allDates.length - 1}
+              value={selectedIdx}
+              onChange={(e) => setDateIdx(parseInt(e.target.value))}
+            />
+            <div className="date-range-labels">
+              <span>{allDates.length > 0 ? formatQ(allDates[0]) : ""}</span>
+              <span>{allDates.length > 0 ? formatQ(allDates[allDates.length - 1]) : ""}</span>
+            </div>
+          </div>
           <div className="chart-box">
             <Chart
               data={[{
                 type: "bar", orientation: "h",
-                y: sorted.map((s) => s.sector),
-                x: sorted.map((s) => s.maturity),
-                marker: { color: sorted.map((s) => qColor(getQuality(s))) },
-                hovertemplate: sorted.map(matHover),
+                y: matAtDate.map((d) => d.sector),
+                x: matAtDate.map((d) => d.maturity),
+                marker: { color: matAtDate.map((d) => qColor(d.quality)) },
+                hovertemplate: matAtDate.map((d) => {
+                  const q = QUALITY_LABEL[d.quality];
+                  return `${d.sector}<br>Maturity: ${d.maturity.toFixed(1)} years<br>${q}<extra></extra>`;
+                }),
               }]}
               layout={layout("", {
-                height: Math.max(500, sorted.length * 26),
+                height: Math.max(500, matAtDate.length * 26),
                 margin: { l: 260, r: 30, t: 10, b: 40 },
                 xaxis: { title: "Years", gridcolor: c.grid, color: c.text },
                 yaxis: { autorange: "reversed" as const, color: c.text },
@@ -184,8 +218,8 @@ export default function Home() {
             <details className="chart-legend">
               <summary>What do the colors mean?</summary>
               <ul>
-                <li><span className="quality-badge quality-high">High confidence</span> Direct calibration with security-level or survey-anchored data (Fed, Foreigners)</li>
-                <li><span className="quality-badge quality-estimated">Estimated</span> Model-based estimate from revaluation behavior; uncertainty from peer-group envelope or calibrated bands</li>
+                <li><span className="quality-badge quality-exact">Exact (SOMA)</span> Direct security-level holdings data from the Fed's SOMA portfolio</li>
+                <li><span className="quality-badge quality-estimated">Estimated</span> Model-based estimate from revaluation behavior; uncertainty from calibrated bands or peer-group envelope</li>
                 <li><span className="quality-badge quality-fallback">Peer fallback</span> No sector-specific signal; estimate is a peer-group median with envelope bounds</li>
               </ul>
             </details>
@@ -297,11 +331,11 @@ export default function Home() {
         {/* --- Fed: Inferred vs Exact --- */}
         {fed_comparison.dates.length > 0 && (
           <section className="section">
-            <h2>Federal Reserve: Inferred vs. Exact</h2>
+            <h2>Federal Reserve: Canonical vs. SOMA Exact</h2>
             <p className="section-desc">
-              The Fed is the only sector with security-level truth (SOMA). This
-              shows how closely the inferred estimate tracks the directly observed
-              portfolio.
+              The Fed's canonical row uses direct SOMA holdings where available.
+              On overlap dates, the published estimate matches the exact portfolio.
+              Earlier dates use the revaluation-inferred method.
             </p>
             <div className="chart-box">
               <Chart
@@ -384,7 +418,7 @@ export default function Home() {
                   x: scatterFiltered.map((s) => (s.bill_share ?? 0) * 100),
                   y: scatterFiltered.map((s) => s.maturity),
                   marker: {
-                    size: scatterFiltered.map((s) => getQuality(s) === "high" ? 16 : getQuality(s) === "fallback" ? 8 : 12),
+                    size: scatterFiltered.map((s) => getQuality(s) === "exact" ? 16 : getQuality(s) === "fallback" ? 8 : 12),
                     color: scatterFiltered.map((s) => qColor(getQuality(s))),
                     line: { width: 1, color: c.bg },
                   },

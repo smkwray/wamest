@@ -34,6 +34,9 @@ INTERVAL_METRIC_SPECS = {
     },
 }
 
+FED_WAM_CORRECTION_MIN_OBS = 8
+FED_WAM_CORRECTION_RIDGE = 1e-6
+
 
 def calibrate_fed_revaluation_mapping(
     fed_sector_panel: pd.DataFrame,
@@ -197,6 +200,10 @@ def build_fed_interval_calibration(
                 "estimated_effective_duration_years": float(metrics["effective_duration_years"]),
                 "estimated_zero_coupon_equivalent_years": float(metrics["zero_coupon_equivalent_years"]),
                 "estimated_bill_share": float(metrics["bill_share"]),
+                "estimated_coupon_share": float(metrics["coupon_share"]),
+                "estimated_tips_share": float(metrics["tips_share"]),
+                "estimated_frn_share": float(metrics["frn_share"]),
+                "estimated_coupon_only_maturity_years": float(metrics["coupon_only_maturity_years"]),
             }
         )
 
@@ -212,6 +219,28 @@ def build_fed_interval_calibration(
         on="date",
         how="left",
     )
+    calibration["raw_estimated_zero_coupon_equivalent_years"] = pd.to_numeric(
+        calibration["estimated_zero_coupon_equivalent_years"],
+        errors="coerce",
+    )
+    calibration["raw_estimated_coupon_only_maturity_years"] = pd.to_numeric(
+        calibration["estimated_coupon_only_maturity_years"],
+        errors="coerce",
+    )
+    wam_correction = fit_fed_wam_correction(calibration)
+    calibration = apply_fed_wam_correction(
+        calibration,
+        wam_correction,
+        estimated_wam_col="raw_estimated_zero_coupon_equivalent_years",
+        tips_share_col="estimated_tips_share",
+        frn_share_col="estimated_frn_share",
+        out_wam_col="estimated_zero_coupon_equivalent_years",
+        coupon_share_col="estimated_coupon_share",
+        bill_share_col="estimated_bill_share",
+        coupon_only_out_col="estimated_coupon_only_maturity_years",
+    )
+    calibration["fed_wam_correction_status"] = wam_correction.get("status")
+    calibration["fed_wam_correction_loocv_mae"] = wam_correction.get("loocv_mae")
 
     for metric_name, spec in INTERVAL_METRIC_SPECS.items():
         calibration[spec["error_column"]] = (
@@ -221,6 +250,176 @@ def build_fed_interval_calibration(
         calibration[spec["abs_error_column"]] = calibration[spec["error_column"]].abs()
 
     return calibration.sort_values("date").reset_index(drop=True)
+
+
+def fit_fed_wam_correction(
+    calibration: pd.DataFrame,
+    *,
+    min_obs: int = FED_WAM_CORRECTION_MIN_OBS,
+    ridge_penalty: float = FED_WAM_CORRECTION_RIDGE,
+) -> dict:
+    if calibration.empty:
+        return {"status": "empty", "n_obs": 0}
+
+    est_col = (
+        "raw_estimated_zero_coupon_equivalent_years"
+        if "raw_estimated_zero_coupon_equivalent_years" in calibration.columns
+        else "estimated_zero_coupon_equivalent_years"
+    )
+    required = [est_col, "estimated_tips_share", "estimated_frn_share", "exact_wam_years"]
+    if any(column not in calibration.columns for column in required):
+        return {
+            "status": "missing_columns",
+            "n_obs": 0,
+            "required_columns": required,
+        }
+
+    valid = calibration[required].apply(pd.to_numeric, errors="coerce").dropna().copy()
+    if len(valid) < int(min_obs):
+        return {"status": "insufficient_obs", "n_obs": int(len(valid))}
+
+    X = np.column_stack(
+        [
+            np.ones(len(valid), dtype=float),
+            valid[est_col].to_numpy(dtype=float),
+            valid["estimated_tips_share"].to_numpy(dtype=float),
+            valid["estimated_frn_share"].to_numpy(dtype=float),
+        ]
+    )
+    y = valid["exact_wam_years"].to_numpy(dtype=float)
+    coefficients = _fit_ridge_linear_model(y, X, ridge_penalty=ridge_penalty)
+    fitted = X @ coefficients
+
+    loocv_errors: list[float] = []
+    for idx in range(len(valid)):
+        mask = np.ones(len(valid), dtype=bool)
+        mask[idx] = False
+        loo_coefficients = _fit_ridge_linear_model(
+            y[mask],
+            X[mask],
+            ridge_penalty=ridge_penalty,
+        )
+        loocv_errors.append(float(abs((X[idx] @ loo_coefficients) - y[idx])))
+
+    return {
+        "status": "ok",
+        "n_obs": int(len(valid)),
+        "ridge_penalty": float(ridge_penalty),
+        "input_columns": {
+            "estimated_wam": est_col,
+            "tips_share": "estimated_tips_share",
+            "frn_share": "estimated_frn_share",
+        },
+        "coefficients": {
+            "intercept": float(coefficients[0]),
+            "estimated_wam": float(coefficients[1]),
+            "tips_share": float(coefficients[2]),
+            "frn_share": float(coefficients[3]),
+        },
+        "train_mae": float(np.mean(np.abs(fitted - y))),
+        "train_max_abs_error": float(np.max(np.abs(fitted - y))),
+        "loocv_mae": float(np.mean(loocv_errors)),
+        "loocv_max_abs_error": float(np.max(loocv_errors)),
+    }
+
+
+def apply_fed_wam_correction(
+    frame: pd.DataFrame,
+    correction: dict | None,
+    *,
+    estimated_wam_col: str,
+    tips_share_col: str,
+    frn_share_col: str,
+    out_wam_col: str,
+    coupon_share_col: str | None = None,
+    bill_share_col: str | None = None,
+    coupon_only_out_col: str | None = None,
+    bill_wam_years: float = 0.25,
+) -> pd.DataFrame:
+    out = frame.copy()
+    if not correction or correction.get("status") != "ok":
+        return out
+
+    coefficients = correction.get("coefficients") or {}
+    required = [estimated_wam_col, tips_share_col, frn_share_col]
+    if any(column not in out.columns for column in required):
+        return out
+
+    estimated_wam = pd.to_numeric(out[estimated_wam_col], errors="coerce")
+    tips_share = pd.to_numeric(out[tips_share_col], errors="coerce")
+    frn_share = pd.to_numeric(out[frn_share_col], errors="coerce")
+    mask = estimated_wam.notna() & tips_share.notna() & frn_share.notna()
+    if not bool(mask.any()):
+        return out
+
+    corrected = (
+        float(coefficients.get("intercept", 0.0))
+        + float(coefficients.get("estimated_wam", 1.0)) * estimated_wam
+        + float(coefficients.get("tips_share", 0.0)) * tips_share
+        + float(coefficients.get("frn_share", 0.0)) * frn_share
+    ).clip(lower=0.0)
+    out.loc[mask, out_wam_col] = corrected.loc[mask]
+
+    if (
+        coupon_only_out_col
+        and coupon_share_col
+        and bill_share_col
+        and coupon_only_out_col in out.columns
+        and coupon_share_col in out.columns
+        and bill_share_col in out.columns
+    ):
+        coupon_share = pd.to_numeric(out[coupon_share_col], errors="coerce")
+        bill_share = pd.to_numeric(out[bill_share_col], errors="coerce")
+        coupon_mask = mask & coupon_share.gt(1e-8) & bill_share.notna()
+        if bool(coupon_mask.any()):
+            corrected_coupon = (
+                corrected - (bill_share * float(bill_wam_years))
+            ) / coupon_share
+            out.loc[coupon_mask, coupon_only_out_col] = corrected_coupon.loc[coupon_mask]
+
+    return out
+
+
+def recenter_estimate_interval(
+    frame: pd.DataFrame,
+    *,
+    raw_point_col: str,
+    corrected_point_col: str,
+    lower_col: str,
+    upper_col: str,
+    floor: float = 0.0,
+) -> pd.DataFrame:
+    out = frame.copy()
+    required = [raw_point_col, corrected_point_col, lower_col, upper_col]
+    if any(column not in out.columns for column in required):
+        return out
+
+    raw_point = pd.to_numeric(out[raw_point_col], errors="coerce")
+    corrected_point = pd.to_numeric(out[corrected_point_col], errors="coerce")
+    lower = pd.to_numeric(out[lower_col], errors="coerce")
+    upper = pd.to_numeric(out[upper_col], errors="coerce")
+    mask = raw_point.notna() & corrected_point.notna() & lower.notna() & upper.notna()
+    if not bool(mask.any()):
+        return out
+
+    lower_gap = (raw_point - lower).clip(lower=0.0)
+    upper_gap = (upper - raw_point).clip(lower=0.0)
+    out.loc[mask, lower_col] = (corrected_point - lower_gap).clip(lower=floor).loc[mask]
+    out.loc[mask, upper_col] = (corrected_point + upper_gap).clip(lower=floor).loc[mask]
+    return out
+
+
+def _fit_ridge_linear_model(
+    y: np.ndarray,
+    X: np.ndarray,
+    *,
+    ridge_penalty: float,
+) -> np.ndarray:
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    penalty = np.eye(X.shape[1], dtype=float) * float(ridge_penalty)
+    penalty[0, 0] = 0.0
+    return np.linalg.solve(X.T @ X + penalty, X.T @ y)
 
 
 def summarize_interval_calibration(

@@ -10,8 +10,11 @@ import pandas as pd
 
 from .benchmark_sets import build_estimation_benchmark_blocks
 from .calibration import (
+    apply_fed_wam_correction,
     build_fed_interval_calibration,
     calibrate_fed_revaluation_mapping,
+    fit_fed_wam_correction,
+    recenter_estimate_interval,
     summarize_interval_calibration,
 )
 from .coverage import (
@@ -265,6 +268,7 @@ def build_public_release_report(
         source_artifacts=source_artifacts,
         provider_summary=provider_summary,
     )
+    fed_wam_correction = fit_fed_wam_correction(interval_calibration)
 
     foreign_nowcast = _build_foreign_nowcast(
         foreign_shl_file=foreign_shl_file,
@@ -298,6 +302,7 @@ def build_public_release_report(
         bank_constraints=bank_constraints,
         sector_config_path=str(sector_defs),
     )
+    estimated = _apply_fed_wam_correction_to_public_output(estimated, fed_wam_correction)
     _validate_required_sectors_present(estimated, DEFAULT_PUBLIC_PREVIEW_SECTORS)
 
     resolved_end_date = _resolve_latest_common_quarter(estimated, selected_sectors, requested=end_date)
@@ -739,7 +744,51 @@ def _build_fed_calibration(
         settings=settings,
     )
     summary["interval_calibration"] = summarize_interval_calibration(interval_calibration, settings=interval_cfg)
+    summary["wam_correction"] = fit_fed_wam_correction(interval_calibration)
     return summary, interval_calibration
+
+
+def _apply_fed_wam_correction_to_public_output(
+    estimated: pd.DataFrame,
+    fed_wam_correction: dict | None,
+) -> pd.DataFrame:
+    if estimated.empty or not fed_wam_correction or fed_wam_correction.get("status") != "ok":
+        return estimated
+
+    out = estimated.copy()
+    fed_mask = out["sector_key"].astype(str).eq("fed")
+    if not bool(fed_mask.any()):
+        return out
+
+    fed_only = out.loc[fed_mask].copy()
+    fed_only["raw_zero_coupon_equivalent_years"] = pd.to_numeric(
+        fed_only["zero_coupon_equivalent_years"],
+        errors="coerce",
+    )
+    fed_only = apply_fed_wam_correction(
+        fed_only,
+        fed_wam_correction,
+        estimated_wam_col="raw_zero_coupon_equivalent_years",
+        tips_share_col="tips_share",
+        frn_share_col="frn_share",
+        out_wam_col="zero_coupon_equivalent_years",
+        coupon_share_col="coupon_share",
+        bill_share_col="bill_share",
+        coupon_only_out_col="coupon_only_maturity_years",
+    )
+    fed_only = recenter_estimate_interval(
+        fed_only,
+        raw_point_col="raw_zero_coupon_equivalent_years",
+        corrected_point_col="zero_coupon_equivalent_years",
+        lower_col="zero_coupon_equivalent_years_lower",
+        upper_col="zero_coupon_equivalent_years_upper",
+    )
+    if "point_estimate_origin" in fed_only.columns:
+        fed_only["point_estimate_origin"] = "fed_soma_bias_corrected_revaluation_inference"
+
+    fed_only.drop(columns=["raw_zero_coupon_equivalent_years"], inplace=True, errors="ignore")
+    out.loc[fed_mask, fed_only.columns] = fed_only
+    return out
 
 
 def _build_foreign_nowcast(

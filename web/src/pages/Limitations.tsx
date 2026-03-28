@@ -18,8 +18,9 @@ export default function Limitations() {
         <div className="card">
           <h3>Fed / SOMA <span className="tier tier-A">A</span></h3>
           <p>
-            Security-level truth set from SOMA holdings. The strongest public
-            benchmark and the calibration anchor for the entire pipeline.
+            Security-level truth set from SOMA holdings. The canonical Fed row
+            uses direct SOMA data where available and serves as the calibration
+            anchor for all other sectors.
           </p>
         </div>
         <div className="card">
@@ -140,7 +141,7 @@ export default function Limitations() {
             <li>Equal observability across all sectors</li>
             <li>Exact maturity for weakly identified sectors</li>
             <li>That all estimates are equally reliable</li>
-            <li>That the direct SOMA series replaces the inferred Fed estimate</li>
+            <li>That all sectors have the same quality of evidence</li>
             <li>Production readiness or hosted API availability</li>
             <li>That weak sectors will become exact</li>
           </ul>
@@ -162,11 +163,10 @@ export default function Limitations() {
         </li>
         <li>
           <strong>
-            The direct SOMA series is a companion, not a replacement.
+            The Fed canonical row uses exact SOMA data where available.
           </strong>{" "}
-          The inferred Fed estimate uses the same cross-sector method as all
-          other sectors. The SOMA series exposes the direct benchmark alongside
-          it.
+          On dates with public SOMA holdings, the Fed row is direct, not
+          inferred. Earlier dates still use the revaluation-inferred method.
         </li>
         <li>
           <strong>Not all rows are equally publishable.</strong> Some sector/date

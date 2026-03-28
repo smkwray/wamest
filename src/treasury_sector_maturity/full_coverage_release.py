@@ -11,8 +11,11 @@ import pandas as pd
 
 from .benchmark_sets import build_estimation_benchmark_blocks, parse_curve_file_overrides
 from .calibration import (
+    apply_fed_wam_correction,
     build_fed_interval_calibration,
     calibrate_fed_revaluation_mapping,
+    fit_fed_wam_correction,
+    recenter_estimate_interval,
     summarize_interval_calibration,
 )
 from .coverage import (
@@ -96,6 +99,7 @@ ESTIMATE_METADATA_COLUMNS = [
     "interval_origin",
 ]
 LOW_SIGNAL_STD_THRESHOLD = 1e-6
+MIN_PUBLISHABLE_ESTIMATE_DATE = pd.Timestamp("2002-03-31")
 PEER_GROUP_MEMBERS = {
     "depositories": [
         "bank_us_chartered",
@@ -275,7 +279,6 @@ def build_full_coverage_release(
         provider_summary=provider_summary,
         intermediate_artifacts=intermediate_artifacts,
     )
-
     foreign_nowcast = _build_foreign_nowcast(
         foreign_shl_file=foreign_shl_file,
         foreign_slt_file=foreign_slt_file,
@@ -310,6 +313,7 @@ def build_full_coverage_release(
         sector_config_path=str(sector_defs),
         annotation_mode="full_coverage",
     )
+    estimated = _apply_fed_exact_overlay_to_release_output(estimated, fed_exact_metrics)
     estimated = _merge_promoted_release_estimates(
         estimated=estimated,
         sector_panel=sector_panel_with_fed_support,
@@ -324,6 +328,7 @@ def build_full_coverage_release(
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
         promotion_window_quarters=promotion_window_quarters,
+        fed_exact_metrics=fed_exact_metrics,
     )
     estimated = _apply_low_identification_overrides(
         estimated=estimated,
@@ -1029,6 +1034,7 @@ def _build_fed_calibration(
     interval_path = resolve_fed_calibration_scope("full")["interval_calibration_out"]
     write_table(interval_calibration, interval_path)
     summary["interval_calibration"] = summarize_interval_calibration(interval_calibration, settings=interval_cfg)
+    summary["wam_correction"] = fit_fed_wam_correction(interval_calibration)
     summary_path = resolve_fed_calibration_scope("full")["summary_out"]
     dump_json(summary, summary_path)
     intermediate_artifacts["fed_interval_calibration"] = interval_path
@@ -1072,6 +1078,85 @@ def _build_fed_exact_overlay(exact_metrics: pd.DataFrame) -> pd.DataFrame:
         ]
     ].copy()
     return overlay.sort_values("date").reset_index(drop=True)
+
+
+def _apply_fed_exact_overlay_to_release_output(
+    estimated: pd.DataFrame,
+    fed_exact_metrics: pd.DataFrame,
+) -> pd.DataFrame:
+    if estimated.empty or fed_exact_metrics.empty:
+        return estimated
+
+    out = estimated.copy()
+    fed_mask = out["sector_key"].astype(str).eq("fed")
+    if not bool(fed_mask.any()):
+        return out
+
+    fed_only = out.loc[fed_mask].copy()
+    fed_only["_row_index"] = fed_only.index
+    exact = fed_exact_metrics[
+        [
+            "date",
+            "exact_wam_years",
+            "bill_share",
+            "coupon_share",
+            "tips_share",
+            "frn_share",
+        ]
+    ].copy()
+    exact["date"] = pd.to_datetime(exact["date"], errors="coerce")
+    exact = exact.rename(
+        columns={
+            "exact_wam_years": "_exact_zero_coupon_equivalent_years",
+            "bill_share": "_exact_bill_share",
+            "coupon_share": "_exact_coupon_share",
+            "tips_share": "_exact_tips_share",
+            "frn_share": "_exact_frn_share",
+        }
+    )
+    fed_only["date"] = pd.to_datetime(fed_only["date"], errors="coerce")
+    fed_only = fed_only.merge(exact, on="date", how="left")
+    exact_mask = fed_only["_exact_zero_coupon_equivalent_years"].notna()
+    if not bool(exact_mask.any()):
+        return out
+
+    row_index = fed_only.loc[exact_mask, "_row_index"].astype(int).to_numpy()
+    out.loc[row_index, "zero_coupon_equivalent_years"] = fed_only.loc[
+        exact_mask, "_exact_zero_coupon_equivalent_years"
+    ].to_numpy()
+    out.loc[row_index, "bill_share"] = fed_only.loc[exact_mask, "_exact_bill_share"].to_numpy()
+    out.loc[row_index, "coupon_share"] = fed_only.loc[exact_mask, "_exact_coupon_share"].to_numpy()
+    out.loc[row_index, "tips_share"] = fed_only.loc[exact_mask, "_exact_tips_share"].to_numpy()
+    out.loc[row_index, "frn_share"] = fed_only.loc[exact_mask, "_exact_frn_share"].to_numpy()
+    out.loc[row_index, "bill_share_lower"] = fed_only.loc[exact_mask, "_exact_bill_share"].to_numpy()
+    out.loc[row_index, "bill_share_upper"] = fed_only.loc[exact_mask, "_exact_bill_share"].to_numpy()
+    out.loc[row_index, "zero_coupon_equivalent_years_lower"] = fed_only.loc[
+        exact_mask, "_exact_zero_coupon_equivalent_years"
+    ].to_numpy()
+    out.loc[row_index, "zero_coupon_equivalent_years_upper"] = fed_only.loc[
+        exact_mask, "_exact_zero_coupon_equivalent_years"
+    ].to_numpy()
+    coupon_share = pd.to_numeric(fed_only["_exact_coupon_share"], errors="coerce")
+    bill_share = pd.to_numeric(fed_only["_exact_bill_share"], errors="coerce")
+    coupon_mask = exact_mask & coupon_share.gt(1e-8) & bill_share.notna()
+    if bool(coupon_mask.any()):
+        out.loc[fed_only.loc[coupon_mask, "_row_index"].astype(int).to_numpy(), "coupon_only_maturity_years"] = (
+            fed_only.loc[coupon_mask, "_exact_zero_coupon_equivalent_years"]
+            - (bill_share.loc[coupon_mask] * 0.25)
+        ) / coupon_share.loc[coupon_mask]
+    if "point_estimate_origin" in fed_only.columns:
+        out.loc[row_index, "point_estimate_origin"] = "fed_soma_exact_holdings_summary"
+    if "interval_origin" in fed_only.columns:
+        out.loc[row_index, "interval_origin"] = "fed_soma_exact_holdings_summary"
+    if "method" in fed_only.columns:
+        out.loc[row_index, "method"] = "fed_soma_exact_holdings_summary"
+    if "maturity_measurement_basis" in fed_only.columns:
+        out.loc[row_index, "maturity_measurement_basis"] = "observed_direct"
+    if "selection_reason" in fed_only.columns:
+        out.loc[row_index, "selection_reason"] = (
+            "direct public SOMA holdings summary used for the Fed canonical row."
+        )
+    return out
 
 
 def _attach_fed_exact_bill_share_support(
@@ -1372,6 +1457,7 @@ def _merge_promoted_release_estimates(
     sector_definitions: dict[str, Any],
     coverage_registry: dict[str, Any],
     promotion_window_quarters: int,
+    fed_exact_metrics: pd.DataFrame,
 ) -> pd.DataFrame:
     out = estimated.copy()
     out["row_is_short_window_estimate"] = False
@@ -1398,6 +1484,10 @@ def _merge_promoted_release_estimates(
         bank_constraints=bank_constraints,
         sector_config_path=str(sector_defs_path),
         annotation_mode="full_coverage",
+    )
+    promoted = _apply_fed_exact_overlay_to_release_output(
+        promoted,
+        fed_exact_metrics,
     )
     if promoted.empty:
         return out
@@ -1569,6 +1659,11 @@ def _annotate_publication_status(frame: pd.DataFrame) -> pd.DataFrame:
     out.loc[has_estimate, "publication_status"] = "published_estimate"
     out.loc[is_backfill & has_estimate, "publication_status"] = "history_preserving_backfill"
 
+    if "date" in out.columns:
+        out["date"] = pd.to_datetime(out["date"], errors="coerce")
+        pre_publishable = out["date"].lt(MIN_PUBLISHABLE_ESTIMATE_DATE)
+        out.loc[pre_publishable, "publication_status"] = "status_only_no_level_or_estimate"
+
     out["publication_status_reason"] = out["publication_status"].map(
         {
             "history_preserving_backfill": "Carried nearest available sector estimate into a leading warmup gap.",
@@ -1577,6 +1672,15 @@ def _annotate_publication_status(frame: pd.DataFrame) -> pd.DataFrame:
             "status_only_no_level_or_estimate": "Sector has neither a public level row nor a publishable maturity estimate for this quarter.",
         }
     )
+    if "date" in out.columns:
+        pre_publishable = out["date"].lt(MIN_PUBLISHABLE_ESTIMATE_DATE)
+        out.loc[
+            pre_publishable,
+            "publication_status_reason",
+        ] = (
+            "Quarter predates the first publishable cross-sector estimation regime "
+            f"({MIN_PUBLISHABLE_ESTIMATE_DATE.date().isoformat()})."
+        )
     return out
 
 
@@ -1836,6 +1940,7 @@ def _build_coverage_completeness(
     estimate_rows = canonical[
         canonical["sector_key"].isin(required_set)
         & _has_published_estimate(canonical)
+        & canonical["publication_status"].isin(["published_estimate", "history_preserving_backfill"])
     ][["date", "sector_key"]].drop_duplicates()
     publication_rows = canonical[
         canonical["sector_key"].isin(required_set)
@@ -2593,7 +2698,7 @@ def _render_release_report(
                 f"Rows: `{fed_exact_overlay_summary['row_count']}`",
                 f"Date start: `{fed_exact_overlay_summary['date_start']}`",
                 f"Date end: `{fed_exact_overlay_summary['date_end']}`",
-                "This artifact is the direct SOMA-based Fed companion. The canonical `fed` row in `canonical_sector_maturity.csv` remains the cross-sector-comparable inferred series.",
+                "This artifact is the direct SOMA-based Fed companion. The canonical `fed` row in `canonical_sector_maturity.csv` is also sourced directly from the exact public SOMA holdings summary.",
             ]
         ),
         "",

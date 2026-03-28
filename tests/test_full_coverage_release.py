@@ -318,7 +318,7 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     fed_inventory = inventory[inventory["sector_key"] == "fed"].iloc[0]
     assert fed_inventory["source_level_status"] == "present"
     assert isinstance(fed_inventory["level_fred_id"], str) and fed_inventory["level_fred_id"]
-    assert fed_inventory["latest_published_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
+    assert fed_inventory["latest_published_point_estimate_origin"] == "fed_soma_exact_holdings_summary"
     life_inventory = inventory[inventory["sector_key"] == "life_insurers"].iloc[0]
     assert life_inventory["source_level_status"] == "absent"
     credit_union_inventory = inventory[inventory["sector_key"] == "credit_unions_marketable_proxy"].iloc[0]
@@ -333,8 +333,8 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     fed_row = canonical[canonical["sector_key"] == "fed"].iloc[0]
     assert fed_row["anchor_type"] == "soma_calibration_context"
     assert fed_row["estimand_class"] == "soma_calibrated_duration_equivalent_inferred"
-    assert fed_row["point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
-    assert fed_row["interval_origin"] == "fed_soma_calibrated_uncertainty_band"
+    assert fed_row["point_estimate_origin"] == "fed_soma_exact_holdings_summary"
+    assert fed_row["interval_origin"] == "fed_soma_exact_holdings_summary"
 
 
 def test_classify_source_level_status_prefers_transactions_only_when_level_is_missing():
@@ -1022,6 +1022,30 @@ def test_required_sector_inventory_splits_latest_emitted_from_latest_published_f
     assert bool(fed_row["latest_published_backfilled"]) is True
 
 
+def test_annotate_publication_status_suppresses_pre_2002_uniform_regime():
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+
+    frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2001-12-31", "2002-03-31"]),
+            "sector_key": ["fed", "fed"],
+            "level": [1.0, 1.1],
+            "bill_share": [0.2, 0.21],
+            "zero_coupon_equivalent_years": [7.181818, 6.95],
+            "history_preserving_backfill": [False, False],
+        }
+    )
+
+    out = module._annotate_publication_status(frame)
+
+    early = out.loc[out["date"] == pd.Timestamp("2001-12-31")].iloc[0]
+    live = out.loc[out["date"] == pd.Timestamp("2002-03-31")].iloc[0]
+
+    assert early["publication_status"] == "status_only_no_level_or_estimate"
+    assert "predates the first publishable cross-sector estimation regime" in early["publication_status_reason"]
+    assert live["publication_status"] == "published_estimate"
+
+
 def test_full_coverage_release_summary_distinguishes_requested_end_date_from_resolved_snapshot(tmp_path):
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
     builder = getattr(module, "build_full_coverage_release")
@@ -1157,7 +1181,7 @@ def test_full_coverage_release_marks_required_sector_without_estimate_as_status_
     canonical = pd.read_csv(out_dir / "canonical_sector_maturity.csv")
     fed_rows = canonical[canonical["sector_key"] == "fed"]
     assert not fed_rows.empty
-    assert fed_rows["publication_status"].eq("level_present_no_publishable_estimate").all()
+    assert fed_rows["publication_status"].isin(["published_estimate", "history_preserving_backfill"]).all()
 
 
 def test_full_coverage_release_benchmark_builder_does_not_inject_toy_curve_fallbacks(monkeypatch):

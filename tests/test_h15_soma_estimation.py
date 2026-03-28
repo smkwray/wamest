@@ -420,10 +420,24 @@ def test_fed_interval_calibration_replaces_heuristic_band_metadata():
         "effective_duration_years_abs_error",
         "zero_coupon_equivalent_years_abs_error",
         "bill_share_abs_error",
+        "raw_estimated_zero_coupon_equivalent_years",
+        "estimated_tips_share",
+        "estimated_frn_share",
+        "fed_wam_correction_status",
     }.issubset(calibration.columns)
     assert summary["status"] == "ok"
     assert "effective_duration_years" not in summary["metrics"]
     assert summary["metrics"]["zero_coupon_equivalent_years"]["half_width"] is not None
+    assert calibration["fed_wam_correction_status"].eq("ok").all()
+    raw_mae = (
+        pd.to_numeric(calibration["raw_estimated_zero_coupon_equivalent_years"], errors="coerce")
+        - pd.to_numeric(calibration["exact_wam_years"], errors="coerce")
+    ).abs().mean()
+    corrected_mae = (
+        pd.to_numeric(calibration["estimated_zero_coupon_equivalent_years"], errors="coerce")
+        - pd.to_numeric(calibration["exact_wam_years"], errors="coerce")
+    ).abs().mean()
+    assert corrected_mae <= raw_mae
 
     result = estimate_effective_maturity_panel(
         sector_panel,
