@@ -1,7 +1,7 @@
 {
   "hero": {
     "sectors_covered": "26/26",
-    "quarters": 303,
+    "quarters": 96,
     "snapshot_quarter": "2025-12-31",
     "published_rows": 2496,
     "data_sources": 6
@@ -12019,7 +12019,6 @@
   "build_info": {
     "schema_version": "v0.2-full-coverage",
     "snapshot_quarter": "2025-12-31",
-    "source": "full-coverage contract build",
-    "note": "Estimates from contract build; SOMA exact overlay from live SOMA data when available"
+    "source": "full-coverage release"
   }
 }

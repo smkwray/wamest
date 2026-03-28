@@ -2,11 +2,11 @@
 
 > **[Live site →](https://smkwray.github.io/wamest/)** · [GitHub](https://github.com/smkwray/wamest)
 
-Quarterly estimates of maturity structure, bill share, duration, and short-vs-long composition for every holder sector in the Federal Reserve's Z.1 Financial Accounts — using only free public data.
+Quarterly estimates of maturity structure, bill share, and short-vs-long composition for every holder sector in the Federal Reserve's Z.1 Financial Accounts — using only free public data.
 
 ## What this is
 
-WAMEST estimates how long each sector of U.S. Treasury holders tends to hold: short-dated bills, long-dated coupons, or something in between. It covers 26 sectors — the Fed, foreign holders, banks, insurers, pensions, mutual funds, households, and more — with estimates going back to 2002.
+WAMEST infers the maturity exposure of each U.S. Treasury holder sector — whether they lean toward short-dated bills, long-dated coupons, or something in between — by analyzing revaluation behavior in the Z.1 Financial Accounts, calibrated against the Fed's exact SOMA portfolio. It covers 26 sectors — the Fed, foreign holders, banks, insurers, pensions, mutual funds, households, and more — with estimates going back to 2002.
 
 All inputs are free public data: the Fed's Z.1 release, H.15 constant-maturity yields, SOMA holdings, and Treasury International Capital (TIC) survey data.
 
@@ -33,6 +33,8 @@ Not all sectors are equally well-observed. The pipeline distinguishes three tier
 | **Peer fallback** | No sector-specific signal; peer-group median | Asset-backed securities |
 
 The Fed's canonical row uses direct SOMA holdings where public data exists. Other sectors are inferred from revaluation behavior and calibrated against the SOMA truth set. Sectors without a usable revaluation signal are explicitly labeled as peer fallbacks.
+
+Many sectors cluster near similar maturity estimates (~7 years). This often reflects shared estimation anchors and regularization rather than precise sector-specific identification. The project surfaces this honestly through evidence tiers and estimate-quality labels.
 
 ## Sector evidence quality
 
@@ -80,7 +82,7 @@ python3 scripts/export_site_data.py
 
 ## Limitations
 
-This project does not claim equal observability across all sectors, exact maturity for weakly identified sectors, or that all estimates are equally reliable. Weak identification is surfaced through evidence tiers and uncertainty bands rather than hidden by omission.
+This project does not claim equal observability across all sectors, exact maturity for weakly identified sectors, or that all estimates are equally reliable. Uncertainty is communicated through calibrated error envelopes (not formal confidence intervals) and evidence tiers. Weak identification is surfaced rather than hidden by omission.
 
 ## Repository structure
 

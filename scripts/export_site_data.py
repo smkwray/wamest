@@ -129,10 +129,11 @@ def main() -> None:
 
     pub_rows = canonical[canonical.get("publication_status") == "published_estimate"] if "publication_status" in canonical.columns else canonical
     published_count = len(pub_rows)
+    pub_quarter_count = len(sorted(pub_rows["date"].unique())) if not pub_rows.empty else quarter_count
 
     hero = {
         "sectors_covered": sectors_covered,
-        "quarters": quarter_count,
+        "quarters": pub_quarter_count,
         "snapshot_quarter": snapshot_quarter,
         "published_rows": published_count,
         "data_sources": 6,
@@ -305,8 +306,7 @@ def main() -> None:
         "build_info": {
             "schema_version": summary.get("schema_version", ""),
             "snapshot_quarter": snapshot_quarter,
-            "source": "full-coverage contract build",
-            "note": "Estimates from contract build; SOMA exact overlay from live SOMA data when available",
+            "source": "full-coverage release" if summary.get("release_summary", {}).get("source_provider_requested") in ("auto", "fred") else "full-coverage contract build",
         },
     }
 

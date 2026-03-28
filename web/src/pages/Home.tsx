@@ -76,6 +76,11 @@ export default function Home() {
         sector: name,
         maturity: idx >= 0 ? ts.maturity[idx] : null,
         quality: snap ? getQuality(snap) : ("estimated" as Quality),
+        fallback_peer_group: snap?.fallback_peer_group || "",
+        fallback_reason: snap?.fallback_reason || "",
+        maturity_low_id: snap?.maturity_low_identification ?? false,
+        point_origin: snap?.point_estimate_origin || "",
+        interval_origin: snap?.interval_origin || "",
       };
     })
     .filter((d): d is typeof d & { maturity: number } => d.maturity != null && d.maturity > 0.01)
@@ -203,7 +208,11 @@ export default function Home() {
                 marker: { color: matAtDate.map((d) => qColor(d.quality)) },
                 hovertemplate: matAtDate.map((d) => {
                   const q = QUALITY_LABEL[d.quality];
-                  return `${d.sector}<br>Maturity: ${d.maturity.toFixed(1)} years<br>${q}<extra></extra>`;
+                  let t = `${d.sector}<br>Maturity: ${d.maturity.toFixed(2)} years<br>${q}`;
+                  if (d.point_origin) t += `<br>Origin: ${d.point_origin.replace(/_/g, " ")}`;
+                  if (d.fallback_peer_group) t += `<br>Peer group: ${d.fallback_peer_group.replace(/_/g, " ")}`;
+                  if (d.maturity_low_id) t += `<br>⚠ Low identification`;
+                  return t + "<extra></extra>";
                 }),
               }]}
               layout={layout("", {
@@ -222,6 +231,11 @@ export default function Home() {
                 <li><span className="quality-badge quality-estimated">Estimated</span> Model-based estimate from revaluation behavior; uncertainty from calibrated bands or peer-group envelope</li>
                 <li><span className="quality-badge quality-fallback">Peer fallback</span> No sector-specific signal; estimate is a peer-group median with envelope bounds</li>
               </ul>
+              <p style={{ marginTop: "0.5rem" }}>
+                Many sectors cluster near similar maturities (~7 years). This often reflects
+                shared estimation anchors and regularization rather than precise sector-specific
+                identification. Hover over bars for provenance details.
+              </p>
             </details>
           </div>
         </section>

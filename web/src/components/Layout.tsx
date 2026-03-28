@@ -48,8 +48,6 @@ export default function Layout() {
           <p className="footer-links">
             <a href="https://github.com/smkwray/wamest" target="_blank" rel="noopener noreferrer">Source</a>
             <span className="sep">&middot;</span>
-            <a href="https://github.com/smkwray/wamest/releases/tag/v0.1.0" target="_blank" rel="noopener noreferrer">v0.1 Release</a>
-            <span className="sep">&middot;</span>
             <span>Data: Federal Reserve Z.1 &middot; H.15 &middot; SOMA &middot; TIC SHL/SLT</span>
           </p>
         </div>
