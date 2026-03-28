@@ -11,8 +11,6 @@
       "sector": "Asset Backed Securities Issuers",
       "sector_key": "asset_backed_securities_issuers",
       "bill_share": 0.2865,
-      "short_share": 0.394,
-      "duration": null,
       "maturity": 7.2561,
       "bill_share_lower": 0.2416,
       "bill_share_upper": 0.3217,
@@ -39,8 +37,6 @@
       "sector": "Foreign Banking Offices (U.S.)",
       "sector_key": "bank_foreign_banking_offices_us",
       "bill_share": 0.2793,
-      "short_share": 0.385,
-      "duration": null,
       "maturity": 7.3585,
       "bill_share_lower": 0.2493,
       "bill_share_upper": 0.3398,
@@ -67,8 +63,6 @@
       "sector": "U.S. Affiliated-Area Banks",
       "sector_key": "bank_us_affiliated_areas",
       "bill_share": 0.2833,
-      "short_share": 0.387,
-      "duration": null,
       "maturity": 7.3077,
       "bill_share_lower": 0.2493,
       "bill_share_upper": 0.3398,
@@ -95,8 +89,6 @@
       "sector": "U.S. Chartered Banks",
       "sector_key": "bank_us_chartered",
       "bill_share": 0.3098,
-      "short_share": 0.4389,
-      "duration": null,
       "maturity": 6.4085,
       "bill_share_lower": 0.2493,
       "bill_share_upper": 0.3398,
@@ -123,8 +115,6 @@
       "sector": "Closed-End Funds",
       "sector_key": "closed_end_funds",
       "bill_share": 0.2964,
-      "short_share": 0.3683,
-      "duration": null,
       "maturity": 7.4898,
       "bill_share_lower": 0.2453,
       "bill_share_upper": 0.3264,
@@ -151,8 +141,6 @@
       "sector": "Credit Unions",
       "sector_key": "credit_unions_marketable_proxy",
       "bill_share": 0.2822,
-      "short_share": 0.3903,
-      "duration": null,
       "maturity": 7.2531,
       "bill_share_lower": 0.2493,
       "bill_share_upper": 0.3398,
@@ -179,8 +167,6 @@
       "sector": "Exchange-Traded Funds",
       "sector_key": "exchange_traded_funds",
       "bill_share": 0.2753,
-      "short_share": 0.3731,
-      "duration": null,
       "maturity": 7.5481,
       "bill_share_lower": 0.2453,
       "bill_share_upper": 0.3264,
@@ -207,8 +193,6 @@
       "sector": "Federal Reserve (SOMA)",
       "sector_key": "fed",
       "bill_share": 0.173,
-      "short_share": 0.3958,
-      "duration": null,
       "maturity": 8.8716,
       "bill_share_lower": 0.173,
       "bill_share_upper": 0.173,
@@ -235,8 +219,6 @@
       "sector": "Federal Defined-Benefit Pensions",
       "sector_key": "federal_defined_benefit_pensions",
       "bill_share": 0.3132,
-      "short_share": 0.4492,
-      "duration": null,
       "maturity": 6.249,
       "bill_share_lower": 0.2657,
       "bill_share_upper": 0.3432,
@@ -263,8 +245,6 @@
       "sector": "Federal Defined-Contribution Pensions",
       "sector_key": "federal_defined_contribution_pensions",
       "bill_share": 0.3,
-      "short_share": 0.3714,
-      "duration": null,
       "maturity": 7.4311,
       "bill_share_lower": 0.2657,
       "bill_share_upper": 0.3353,
@@ -291,8 +271,6 @@
       "sector": "Foreign Holders (Total)",
       "sector_key": "foreigners_total",
       "bill_share": 0.157,
-      "short_share": 0.4293,
-      "duration": null,
       "maturity": 7.4475,
       "bill_share_lower": 0.1469,
       "bill_share_upper": 0.1669,
@@ -319,8 +297,6 @@
       "sector": "Government-Sponsored Enterprises",
       "sector_key": "government_sponsored_enterprises",
       "bill_share": 0.2995,
-      "short_share": 0.4029,
-      "duration": null,
       "maturity": 6.9842,
       "bill_share_lower": 0.2416,
       "bill_share_upper": 0.3295,
@@ -347,8 +323,6 @@
       "sector": "Holding Companies",
       "sector_key": "holding_companies",
       "bill_share": 0.2865,
-      "short_share": 0.3894,
-      "duration": null,
       "maturity": 7.2561,
       "bill_share_lower": 0.2416,
       "bill_share_upper": 0.3217,
@@ -375,8 +349,6 @@
       "sector": "Households & Nonprofits",
       "sector_key": "households_nonprofits",
       "bill_share": 0.2648,
-      "short_share": 0.3976,
-      "duration": null,
       "maturity": 7.2643,
       "bill_share_lower": 0.2348,
       "bill_share_upper": 0.3293,
@@ -403,8 +375,6 @@
       "sector": "Life Insurers",
       "sector_key": "life_insurers",
       "bill_share": 0.0917,
-      "short_share": 0.4207,
-      "duration": null,
       "maturity": 7.8818,
       "bill_share_lower": 0.0817,
       "bill_share_upper": 0.1017,
@@ -431,8 +401,6 @@
       "sector": "Money Market Funds",
       "sector_key": "money_market_funds",
       "bill_share": 0.7618,
-      "short_share": 0.7618,
-      "duration": null,
       "maturity": 1.1124,
       "bill_share_lower": 0.7538,
       "bill_share_upper": 0.7738,
@@ -459,8 +427,6 @@
       "sector": "Mutual Funds",
       "sector_key": "mutual_funds",
       "bill_share": 0.0076,
-      "short_share": 0.4297,
-      "duration": null,
       "maturity": 8.1925,
       "bill_share_lower": 0.0,
       "bill_share_upper": 0.0175,
@@ -487,8 +453,6 @@
       "sector": "Nonfinancial Corporates",
       "sector_key": "nonfinancial_corporates",
       "bill_share": 0.2885,
-      "short_share": 0.3892,
-      "duration": null,
       "maturity": 7.2491,
       "bill_share_lower": 0.2348,
       "bill_share_upper": 0.3293,
@@ -515,8 +479,6 @@
       "sector": "Nonfinancial Noncorporate Business",
       "sector_key": "nonfinancial_noncorporate_business",
       "bill_share": 0.2852,
-      "short_share": 0.385,
-      "duration": null,
       "maturity": 7.3253,
       "bill_share_lower": 0.2348,
       "bill_share_upper": 0.3293,
@@ -543,8 +505,6 @@
       "sector": "Other Financial Business",
       "sector_key": "other_financial_business",
       "bill_share": 0.2865,
-      "short_share": 0.394,
-      "duration": null,
       "maturity": 7.2561,
       "bill_share_lower": 0.2416,
       "bill_share_upper": 0.3217,
@@ -571,8 +531,6 @@
       "sector": "Private Defined-Benefit Pensions",
       "sector_key": "private_defined_benefit_pensions",
       "bill_share": 0.2954,
-      "short_share": 0.3703,
-      "duration": null,
       "maturity": 7.4712,
       "bill_share_lower": 0.2654,
       "bill_share_upper": 0.3353,
@@ -599,8 +557,6 @@
       "sector": "Private Defined-Contribution Pensions",
       "sector_key": "private_defined_contribution_pensions",
       "bill_share": 0.2959,
-      "short_share": 0.3715,
-      "duration": null,
       "maturity": 7.4529,
       "bill_share_lower": 0.2659,
       "bill_share_upper": 0.3353,
@@ -627,8 +583,6 @@
       "sector": "Property & Casualty Insurers",
       "sector_key": "property_casualty_insurers",
       "bill_share": 0.4132,
-      "short_share": 0.4786,
-      "duration": null,
       "maturity": 5.4646,
       "bill_share_lower": 0.4032,
       "bill_share_upper": 0.4232,
@@ -655,8 +609,6 @@
       "sector": "Security Brokers & Dealers",
       "sector_key": "security_brokers_and_dealers",
       "bill_share": 0.2492,
-      "short_share": 0.394,
-      "duration": null,
       "maturity": 7.3945,
       "bill_share_lower": 0.2192,
       "bill_share_upper": 0.3217,
@@ -683,8 +635,6 @@
       "sector": "State Local Employee Defined Benefit Pensions",
       "sector_key": "state_local_employee_defined_benefit_pensions",
       "bill_share": 0.3001,
-      "short_share": 0.3734,
-      "duration": null,
       "maturity": 7.3995,
       "bill_share_lower": 0.2657,
       "bill_share_upper": 0.3353,
@@ -711,8 +661,6 @@
       "sector": "State & Local Governments",
       "sector_key": "state_local_governments",
       "bill_share": 0.2993,
-      "short_share": 0.3741,
-      "duration": null,
       "maturity": 7.3956,
       "bill_share_lower": 0.2348,
       "bill_share_upper": 0.3293,
@@ -11624,8 +11572,8 @@
       "level_tier": "A",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "present"
     },
     {
@@ -11634,8 +11582,8 @@
       "level_tier": "B",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "computed_proxy"
     },
     {
@@ -11644,8 +11592,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11654,8 +11602,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11664,8 +11612,8 @@
       "level_tier": "C",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11673,9 +11621,9 @@
       "sector_key": "life_insurers",
       "level_tier": "A",
       "maturity_tier": "C",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11684,8 +11632,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11694,8 +11642,8 @@
       "level_tier": "A",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "present"
     },
     {
@@ -11704,8 +11652,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11714,8 +11662,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11723,9 +11671,9 @@
       "sector_key": "property_casualty_insurers",
       "level_tier": "A",
       "maturity_tier": "C",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11734,8 +11682,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11744,8 +11692,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11753,9 +11701,9 @@
       "sector_key": "fed",
       "level_tier": "A",
       "maturity_tier": "A",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11764,8 +11712,8 @@
       "level_tier": "A",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11774,8 +11722,8 @@
       "level_tier": "A",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11784,8 +11732,8 @@
       "level_tier": "A",
       "maturity_tier": "D",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11794,8 +11742,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11804,8 +11752,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11813,9 +11761,9 @@
       "sector_key": "foreigners_total",
       "level_tier": "A",
       "maturity_tier": "B",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11824,8 +11772,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11834,8 +11782,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11843,9 +11791,9 @@
       "sector_key": "money_market_funds",
       "level_tier": "A",
       "maturity_tier": "C",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "present"
     },
     {
@@ -11853,9 +11801,9 @@
       "sector_key": "mutual_funds",
       "level_tier": "A",
       "maturity_tier": "C",
-      "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "has_bills_series": true,
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11864,8 +11812,8 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "transactions_only"
     },
     {
@@ -11874,14 +11822,14 @@
       "level_tier": "A",
       "maturity_tier": "C",
       "has_bills_series": false,
-      "publication_start": "",
-      "publication_end": "",
+      "publication_start": "1945-12-31",
+      "publication_end": "2025-12-31",
       "source_level_status": "present"
     }
   ],
   "build_info": {
     "schema_version": "v0.2-full-coverage",
     "snapshot_quarter": "2025-12-31",
-    "source": "full-coverage release"
+    "source": "live data"
   }
 }

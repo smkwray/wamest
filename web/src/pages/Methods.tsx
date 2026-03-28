@@ -23,8 +23,8 @@ export default function Methods() {
           <p>
             Parse the Z.1 release and construct a quarterly panel of
             sector-level holdings, transactions, revaluations, and bill splits.
-            The full-coverage path supplements missing level series from FRED
-            when the Fed release only publishes transactions.
+            Missing level series are supplemented from FRED when the Fed
+            release only publishes transactions.
           </p>
         </div>
         <div className="step">

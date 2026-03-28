@@ -123,11 +123,9 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
         [
             {
                 "sector_key": "fed",
-                "level_evidence_tier": "A",
-                "maturity_evidence_tier": "A",
-                "has_bills_series": True,
-                "publication_range_start": "1945-12-31",
-                "publication_range_end": "2025-12-31",
+                "bills_series_available": True,
+                "first_publishable_estimate_date": "2002-03-31",
+                "latest_publishable_estimate_date": "2025-12-31",
                 "source_level_status": "present",
                 "sector_family": "official",
                 "concept_risk": "low",
@@ -136,11 +134,9 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
             },
             {
                 "sector_key": "holding_companies",
-                "level_evidence_tier": "A",
-                "maturity_evidence_tier": "C",
-                "has_bills_series": False,
-                "publication_range_start": "1945-12-31",
-                "publication_range_end": "2025-12-31",
+                "bills_series_available": False,
+                "first_publishable_estimate_date": "2002-03-31",
+                "latest_publishable_estimate_date": "2025-12-31",
                 "source_level_status": "present",
                 "sector_family": "other_financial",
                 "concept_risk": "high",
@@ -207,9 +203,13 @@ def test_export_site_data_exposes_provenance_and_low_information_flags(tmp_path)
     fed_inv = next(item for item in site_data["inventory"] if item["sector_key"] == "fed")
     assert fed_inv["level_tier"] == "A"
     assert fed_inv["maturity_tier"] == "A"
+    assert fed_inv["has_bills_series"] is True
+    assert fed_inv["publication_start"] == "2002-03-31"
+    assert fed_inv["publication_end"] == "2025-12-31"
     weak_inv = next(item for item in site_data["inventory"] if item["sector_key"] == "holding_companies")
     assert weak_inv["level_tier"] == "A"
     assert weak_inv["maturity_tier"] == "C"
+    assert weak_inv["has_bills_series"] is False
 
     validation = site_data["validation"]["fed_calibration"]
     assert validation["dates"] == ["2025-09-30", "2025-12-31"]

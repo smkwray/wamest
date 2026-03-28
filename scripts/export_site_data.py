@@ -202,8 +202,6 @@ def main() -> None:
             "sector": human_name(sk),
             "sector_key": sk,
             "bill_share": safe_val(row.get("bill_share")),
-            "short_share": safe_val(row.get("short_share_le_1y")),
-            "duration": safe_val(row.get("effective_duration_years")),
             "maturity": safe_val(row.get("zero_coupon_equivalent_years")),
             "bill_share_lower": safe_val(row.get("bill_share_lower")),
             "bill_share_upper": safe_val(row.get("bill_share_upper")),
@@ -311,9 +309,9 @@ def main() -> None:
                 "sector_key": sk,
                 "level_tier": tier_info.get("level_evidence_tier", ""),
                 "maturity_tier": tier_info.get("maturity_evidence_tier", ""),
-                "has_bills_series": bool(row.get("has_bills_series", False)),
-                "publication_start": row.get("publication_range_start", ""),
-                "publication_end": row.get("publication_range_end", ""),
+                "has_bills_series": bool(row.get("bills_series_available", row.get("has_bills_series", False))),
+                "publication_start": row.get("first_publishable_estimate_date", row.get("publication_range_start", "")),
+                "publication_end": row.get("latest_publishable_estimate_date", row.get("publication_range_end", "")),
                 "source_level_status": row.get("source_level_status", ""),
             })
 
@@ -352,7 +350,7 @@ def main() -> None:
         "build_info": {
             "schema_version": summary.get("schema_version", ""),
             "snapshot_quarter": snapshot_quarter,
-            "source": "full-coverage release" if summary.get("release_summary", {}).get("source_provider_requested") in ("auto", "fred") else "full-coverage contract build",
+            "source": "live data" if summary.get("release_summary", {}).get("source_provider_requested") in ("auto", "fred") else "reproducible build",
         },
     }
 

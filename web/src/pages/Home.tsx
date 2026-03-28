@@ -158,6 +158,7 @@ export default function Home() {
       {tsNames.map((name) => (
         <button key={name}
           className={`pill${tsActive.has(name) ? ` pill-active pill-tier-${nameToTier[name] || "C"}` : ""}`}
+          aria-pressed={tsActive.has(name)}
           onClick={() => toggleTs(name)}>{name}</button>
       ))}
     </div>
@@ -168,6 +169,7 @@ export default function Home() {
       {[...snapshot].sort((a, b) => a.sector.localeCompare(b.sector)).map((s) => (
         <button key={s.sector_key}
           className={`pill${scatterActive.has(s.sector_key) ? ` pill-active pill-tier-${s.maturity_tier}` : ""}`}
+          aria-pressed={scatterActive.has(s.sector_key)}
           onClick={() => toggleScatter(s.sector_key)}>{s.sector}</button>
       ))}
     </div>
@@ -402,6 +404,29 @@ export default function Home() {
                 layout={layout("Bill Share: Inferred vs. Exact", {
                   height: 380,
                   yaxis: { title: "Bill Share (%)", gridcolor: c.grid, color: c.text },
+                  xaxis: { gridcolor: c.grid, color: c.text },
+                  legend: { orientation: "h" as const, y: -0.15, font: { size: 11, color: c.text } },
+                })}
+                config={{ responsive: true, displayModeBar: true, displaylogo: false }}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div className="chart-box" style={{ marginTop: "var(--sp-md, 1.5rem)" }}>
+              <Chart
+                data={[
+                  { type: "scatter", mode: "lines+markers", name: "Inferred",
+                    x: fed_comparison.dates,
+                    y: fed_comparison.inferred_maturity,
+                    line: { color: traces[1], width: 2 }, marker: { size: 4, color: traces[1] } },
+                  { type: "scatter", mode: "lines+markers", name: "Exact (SOMA)",
+                    x: fed_comparison.dates,
+                    y: fed_comparison.exact_maturity,
+                    line: { color: traces[0], width: 2, dash: "dot" },
+                    marker: { size: 4, symbol: "diamond", color: traces[0] } },
+                ]}
+                layout={layout("Maturity: Inferred vs. Exact", {
+                  height: 380,
+                  yaxis: { title: "Maturity (years)", gridcolor: c.grid, color: c.text },
                   xaxis: { gridcolor: c.grid, color: c.text },
                   legend: { orientation: "h" as const, y: -0.15, font: { size: 11, color: c.text } },
                 })}

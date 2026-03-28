@@ -12,8 +12,6 @@ export interface SiteData {
     sector: string;
     sector_key: string;
     bill_share: number | null;
-    short_share: number | null;
-    duration: number | null;
     maturity: number | null;
     bill_share_lower: number | null;
     bill_share_upper: number | null;

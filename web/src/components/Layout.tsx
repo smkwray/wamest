@@ -23,7 +23,7 @@ export default function Layout() {
       <header className="site-header">
         <div className="header-inner">
           <NavLink to="/" className="wordmark">WAMEST</NavLink>
-          <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+          <button className="menu-toggle" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu" aria-expanded={menuOpen}>
             <span /><span /><span />
           </button>
           <nav className={menuOpen ? "open" : ""}>
