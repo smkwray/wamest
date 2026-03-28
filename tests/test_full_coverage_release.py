@@ -353,6 +353,150 @@ def test_classify_source_level_status_prefers_transactions_only_when_level_is_mi
     )
 
 
+def test_low_identification_overrides_use_peer_group_fallback_and_envelope():
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    helper = getattr(module, "_apply_low_identification_overrides")
+
+    date = pd.Timestamp("2025-12-31")
+    estimated = pd.DataFrame(
+        [
+            {
+                "date": date,
+                "sector_key": "asset_backed_securities_issuers",
+                "bill_share": 0.3165,
+                "short_share_le_1y": 0.3165,
+                "effective_duration_years": 6.05,
+                "zero_coupon_equivalent_years": 6.05,
+                "bill_share_lower": 0.0,
+                "bill_share_upper": 0.63,
+                "short_share_le_1y_lower": 0.0,
+                "short_share_le_1y_upper": 0.63,
+                "effective_duration_years_lower": 0.0,
+                "effective_duration_years_upper": 12.0,
+                "zero_coupon_equivalent_years_lower": 0.0,
+                "zero_coupon_equivalent_years_upper": 12.0,
+                "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
+                "method": "rolling_benchmark_weights_plus_factors",
+                "estimator_family": "direct_level_plus_revaluation_inference",
+                "selection_reason": "weak revaluation signal retained because coverage is mandatory",
+                "interval_origin": "fed_soma_calibrated_uncertainty_band",
+                "uncertainty_band_method": "fed_interval_calibration_with_sector_support",
+                "high_confidence_flag": False,
+                "maturity_evidence_tier": "C",
+                "maturity_measurement_basis": "direct_revaluation_inference",
+                "anchor_type": "direct_z1_revaluation",
+                "concept_match": "direct",
+                "revaluation_signal_std_window": 0.0,
+            },
+            {
+                "date": date,
+                "sector_key": "government_sponsored_enterprises",
+                "bill_share": 0.30,
+                "short_share_le_1y": 0.30,
+                "effective_duration_years": 6.8,
+                "zero_coupon_equivalent_years": 7.0,
+                "bill_share_lower": 0.0,
+                "bill_share_upper": 0.61,
+                "short_share_le_1y_lower": 0.0,
+                "short_share_le_1y_upper": 0.61,
+                "effective_duration_years_lower": 0.0,
+                "effective_duration_years_upper": 12.0,
+                "zero_coupon_equivalent_years_lower": 0.0,
+                "zero_coupon_equivalent_years_upper": 12.0,
+                "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
+                "method": "rolling_benchmark_weights_plus_factors",
+                "estimator_family": "direct_level_plus_revaluation_inference",
+                "selection_reason": "weak revaluation signal retained because coverage is mandatory",
+                "interval_origin": "fed_soma_calibrated_uncertainty_band",
+                "uncertainty_band_method": "fed_interval_calibration_with_sector_support",
+                "high_confidence_flag": False,
+                "maturity_evidence_tier": "C",
+                "maturity_measurement_basis": "direct_revaluation_inference",
+                "anchor_type": "direct_z1_revaluation",
+                "concept_match": "direct",
+                "revaluation_signal_std_window": 0.02,
+            },
+            {
+                "date": date,
+                "sector_key": "holding_companies",
+                "bill_share": 0.28,
+                "short_share_le_1y": 0.28,
+                "effective_duration_years": 7.0,
+                "zero_coupon_equivalent_years": 7.2,
+                "bill_share_lower": 0.0,
+                "bill_share_upper": 0.60,
+                "short_share_le_1y_lower": 0.0,
+                "short_share_le_1y_upper": 0.60,
+                "effective_duration_years_lower": 0.0,
+                "effective_duration_years_upper": 12.0,
+                "zero_coupon_equivalent_years_lower": 0.0,
+                "zero_coupon_equivalent_years_upper": 12.0,
+                "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
+                "method": "rolling_benchmark_weights_plus_factors",
+                "estimator_family": "direct_level_plus_revaluation_inference",
+                "selection_reason": "weak revaluation signal retained because coverage is mandatory",
+                "interval_origin": "fed_soma_calibrated_uncertainty_band",
+                "uncertainty_band_method": "fed_interval_calibration_with_sector_support",
+                "high_confidence_flag": False,
+                "maturity_evidence_tier": "C",
+                "maturity_measurement_basis": "direct_revaluation_inference",
+                "anchor_type": "direct_z1_revaluation",
+                "concept_match": "direct",
+                "revaluation_signal_std_window": 0.02,
+            },
+            {
+                "date": date,
+                "sector_key": "security_brokers_and_dealers",
+                "bill_share": 0.25,
+                "short_share_le_1y": 0.25,
+                "effective_duration_years": 7.2,
+                "zero_coupon_equivalent_years": 7.4,
+                "bill_share_lower": 0.0,
+                "bill_share_upper": 0.56,
+                "short_share_le_1y_lower": 0.0,
+                "short_share_le_1y_upper": 0.56,
+                "effective_duration_years_lower": 0.0,
+                "effective_duration_years_upper": 12.0,
+                "zero_coupon_equivalent_years_lower": 0.0,
+                "zero_coupon_equivalent_years_upper": 12.0,
+                "point_estimate_origin": "rolling_benchmark_weights_plus_factors",
+                "method": "rolling_benchmark_weights_plus_factors",
+                "estimator_family": "direct_level_plus_revaluation_inference",
+                "selection_reason": "weak revaluation signal retained because coverage is mandatory",
+                "interval_origin": "fed_soma_calibrated_uncertainty_band",
+                "uncertainty_band_method": "fed_interval_calibration_with_sector_support",
+                "high_confidence_flag": False,
+                "maturity_evidence_tier": "C",
+                "maturity_measurement_basis": "direct_revaluation_inference",
+                "anchor_type": "direct_z1_revaluation",
+                "concept_match": "direct",
+                "revaluation_signal_std_window": 0.02,
+            },
+        ]
+    )
+    sector_panel = pd.DataFrame(
+        [
+            {"date": date, "sector_key": "asset_backed_securities_issuers", "bill_share_observed": pd.NA, "exact_bill_share_support": pd.NA, "revaluation": pd.NA},
+            {"date": date, "sector_key": "government_sponsored_enterprises", "bill_share_observed": pd.NA, "exact_bill_share_support": pd.NA, "revaluation": 1.0},
+            {"date": date, "sector_key": "holding_companies", "bill_share_observed": pd.NA, "exact_bill_share_support": pd.NA, "revaluation": 1.0},
+            {"date": date, "sector_key": "security_brokers_and_dealers", "bill_share_observed": pd.NA, "exact_bill_share_support": pd.NA, "revaluation": 1.0},
+        ]
+    )
+
+    result = helper(estimated, sector_panel)
+    abs_row = result[result["sector_key"] == "asset_backed_securities_issuers"].iloc[0]
+
+    assert abs_row["method"] == "peer_group_median_fallback"
+    assert abs_row["point_estimate_origin"] == "peer_group_same_date_median_fallback"
+    assert abs_row["interval_origin"] == "peer_group_same_date_envelope"
+    assert abs_row["fallback_peer_group"] == "other_financial"
+    assert int(abs_row["fallback_peer_count"]) == 3
+    assert bool(abs_row["revaluation_source_observed"]) is False
+    assert 0.24 <= float(abs_row["bill_share"]) <= 0.31
+    assert 6.9 <= float(abs_row["zero_coupon_equivalent_years"]) <= 7.3
+    assert float(abs_row["bill_share_upper"]) - float(abs_row["bill_share_lower"]) < 0.63
+    assert float(abs_row["zero_coupon_equivalent_years_upper"]) - float(abs_row["zero_coupon_equivalent_years_lower"]) < 12.0
+
 def test_supplement_missing_z1_levels_from_fred_adds_configured_required_level_series(monkeypatch):
     module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
     helper = getattr(module, "_supplement_missing_z1_levels_from_fred")
@@ -620,7 +764,7 @@ def test_full_coverage_release_supports_deterministic_fully_covered_supplemented
                 "estimate_origin_includes_short_window_promotion": False,
                 "short_window_promotion_quarters": pd.NA,
                 "level_evidence_tier": "A",
-                "maturity_evidence_tier": "B" if sector_key == "fed" else "C",
+                "maturity_evidence_tier": "A" if sector_key == "fed" else "C",
                 "anchor_type": "soma_calibration_context" if sector_key == "fed" else "direct_z1_revaluation",
                 "concept_match": "calibrated" if sector_key == "fed" else "direct",
                 "coverage_ratio": pd.NA,

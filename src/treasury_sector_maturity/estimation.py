@@ -335,6 +335,8 @@ def rolling_weight_estimates(
             "date": dates[idx],
             "window_obs": int(y_valid.size),
             "fit_rmse_window": fit_rmse,
+            "revaluation_signal_std_window": float(np.std(y_valid)) if y_valid.size else np.nan,
+            "revaluation_signal_abs_max_window": float(np.max(np.abs(y_valid))) if y_valid.size else np.nan,
         }
         row.update({asset: 0.0 for asset in assets})
         row.update({asset: weight for asset, weight in zip(available_assets, weights)})
@@ -450,6 +452,15 @@ def estimate_effective_maturity_panel(
         bill_share_observed = None
         if "bill_share_observed" in sub.columns:
             bill_share_observed = sub.set_index("date")["bill_share_observed"]
+        if "exact_bill_share_support" in sub.columns:
+            exact_bill_share_support = (
+                sub.set_index("date")["exact_bill_share_support"]
+                .pipe(pd.to_numeric, errors="coerce")
+            )
+            if bill_share_observed is None:
+                bill_share_observed = exact_bill_share_support
+            else:
+                bill_share_observed = exact_bill_share_support.combine_first(bill_share_observed)
         if bank_constraints_panel is not None and {"sector_key", "constraint_bill_share"}.issubset(bank_constraints_panel.columns):
             bank_sub = bank_constraints_panel[bank_constraints_panel["sector_key"] == sector].copy()
             if not bank_sub.empty:
@@ -500,6 +511,8 @@ def estimate_effective_maturity_panel(
                     "method": "rolling_benchmark_weights_plus_factors" if factor_cols else "rolling_benchmark_weights",
                     "window_obs": int(wrow["window_obs"]),
                     "fit_rmse_window": float(wrow["fit_rmse_window"]),
+                    "revaluation_signal_std_window": float(wrow["revaluation_signal_std_window"]),
+                    "revaluation_signal_abs_max_window": float(wrow["revaluation_signal_abs_max_window"]),
                     **{f"factor_exposure_{col}": float(wrow[col]) for col in factor_cols},
                 }
             )

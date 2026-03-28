@@ -54,7 +54,7 @@ Rules:
 Enums used in the fixed reference preview:
 
 - `level_evidence_tier`: `A`, `B`, `C`
-- `maturity_evidence_tier`: `B`, `C`, `D`
+- `maturity_evidence_tier`: `A`, `B`, `C`, `D`
 - `concept_match`: `direct`, `aggregate`, `proxy`, `residual`, `residual_style`, `anchor_consistent`, `partial`
 
 ## `run_manifest.json`

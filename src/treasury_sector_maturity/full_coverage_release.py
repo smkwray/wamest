@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .benchmark_sets import build_estimation_benchmark_blocks, parse_curve_file_overrides
@@ -94,6 +95,50 @@ ESTIMATE_METADATA_COLUMNS = [
     "point_estimate_origin",
     "interval_origin",
 ]
+LOW_SIGNAL_STD_THRESHOLD = 1e-6
+PEER_GROUP_MEMBERS = {
+    "depositories": [
+        "bank_us_chartered",
+        "bank_foreign_banking_offices_us",
+        "bank_us_affiliated_areas",
+        "credit_unions_marketable_proxy",
+    ],
+    "domestic_real_money": [
+        "households_nonprofits",
+        "nonfinancial_corporates",
+        "nonfinancial_noncorporate_business",
+        "state_local_governments",
+    ],
+    "listed_funds": [
+        "closed_end_funds",
+        "exchange_traded_funds",
+    ],
+    "pensions": [
+        "private_defined_benefit_pensions",
+        "private_defined_contribution_pensions",
+        "federal_defined_benefit_pensions",
+        "federal_defined_contribution_pensions",
+        "state_local_employee_defined_benefit_pensions",
+    ],
+    "other_financial": [
+        "government_sponsored_enterprises",
+        "holding_companies",
+        "security_brokers_and_dealers",
+        "asset_backed_securities_issuers",
+        "other_financial_business",
+    ],
+}
+PEER_GROUP_BY_SECTOR = {
+    sector_key: peer_group
+    for peer_group, sector_keys in PEER_GROUP_MEMBERS.items()
+    for sector_key in sector_keys
+}
+PEER_ENVELOPE_METRICS = {
+    "bill_share": {"margin_floor": 0.03, "lower_bound": 0.0, "upper_bound": 1.0},
+    "short_share_le_1y": {"margin_floor": 0.03, "lower_bound": 0.0, "upper_bound": 1.0},
+    "effective_duration_years": {"margin_floor": 0.75, "lower_bound": 0.0, "upper_bound": None},
+    "zero_coupon_equivalent_years": {"margin_floor": 1.0, "lower_bound": 0.0, "upper_bound": None},
+}
 
 
 @dataclass(frozen=True)
@@ -251,8 +296,10 @@ def build_full_coverage_release(
         intermediate_artifacts=intermediate_artifacts,
     )
 
+    sector_panel_with_fed_support = _attach_fed_exact_bill_share_support(sector_panel, fed_exact_metrics)
+
     estimated = estimate_effective_maturity_panel(
-        sector_panel,
+        sector_panel_with_fed_support,
         benchmark,
         factor_returns=factor_benchmark,
         settings=settings,
@@ -265,7 +312,7 @@ def build_full_coverage_release(
     )
     estimated = _merge_promoted_release_estimates(
         estimated=estimated,
-        sector_panel=sector_panel,
+        sector_panel=sector_panel_with_fed_support,
         benchmark=benchmark,
         factor_benchmark=factor_benchmark,
         settings=settings,
@@ -277,6 +324,16 @@ def build_full_coverage_release(
         sector_definitions=sector_definitions,
         coverage_registry=coverage_registry,
         promotion_window_quarters=promotion_window_quarters,
+    )
+    estimated = _apply_low_identification_overrides(
+        estimated=estimated,
+        sector_panel=sector_panel_with_fed_support,
+    )
+    estimated = _attach_revaluation_source_observed(
+        estimated,
+        raw_long_df=sector_inputs.raw_long_df,
+        sector_definitions=sector_definitions,
+        catalog=sector_inputs.catalog,
     )
     intermediate_artifacts["sector_effective_maturity"] = str(resolve_estimation_scope("full")["out"])
     write_table(estimated, intermediate_artifacts["sector_effective_maturity"])
@@ -293,6 +350,7 @@ def build_full_coverage_release(
             )
         )
     )
+    canonical = _normalize_low_identification_columns(canonical)
     publication_ranges = _build_publication_ranges(canonical)
     canonical = _attach_publication_range_flags(canonical, publication_ranges)
     latest_quarter = _resolve_latest_snapshot_quarter(publication_ranges, required_canonical)
@@ -337,12 +395,20 @@ def build_full_coverage_release(
         "concept_match",
         "coverage_ratio",
         "coverage_measurement_basis",
-        "coverage_label",
-        "level_source_provider_used",
-        "level_supplemented_from_fred",
-        "effective_duration_status",
-        "point_estimate_origin",
-        "interval_origin",
+            "coverage_label",
+            "level_source_provider_used",
+            "level_supplemented_from_fred",
+            "effective_duration_status",
+            "window_obs",
+            "fit_rmse_window",
+            "revaluation_signal_std_window",
+            "revaluation_signal_abs_max_window",
+            "revaluation_source_observed",
+            "fallback_peer_group",
+            "fallback_peer_count",
+            "fallback_reason",
+            "point_estimate_origin",
+            "interval_origin",
         "bill_share",
         "short_share_le_1y",
         "coupon_share",
@@ -682,6 +748,36 @@ def _series_dependency_metadata(
     }
 
 
+def _attach_revaluation_source_observed(
+    estimated: pd.DataFrame,
+    *,
+    raw_long_df: pd.DataFrame,
+    sector_definitions: dict[str, Any],
+    catalog: dict[str, Any],
+) -> pd.DataFrame:
+    out = estimated.copy()
+    if out.empty:
+        return out
+
+    observed_codes = set(raw_long_df["series_code"].dropna().astype(str)) if "series_code" in raw_long_df.columns else set()
+    source_available: dict[str, bool] = {}
+
+    for sector_key in out["sector_key"].dropna().astype(str).unique():
+        sector_spec = dict(sector_definitions.get(sector_key) or {})
+        level_series_key = _as_text(sector_spec.get("level_series"))
+        if level_series_key is None:
+            source_available[sector_key] = False
+            continue
+
+        leaf_keys = _resolve_catalog_leaf_series_keys(level_series_key, catalog)
+        leaf_specs = [catalog[key] for key in leaf_keys if key in catalog]
+        revaluation_codes = [_as_text(getattr(spec, "revaluation", None)) for spec in leaf_specs]
+        source_available[sector_key] = any(code and code in observed_codes for code in revaluation_codes)
+
+    out["revaluation_source_observed"] = out["sector_key"].astype(str).map(source_available).fillna(False).astype(bool)
+    return out
+
+
 def _supplement_missing_z1_levels_from_fred(
     *,
     long_df: pd.DataFrame,
@@ -976,6 +1072,266 @@ def _build_fed_exact_overlay(exact_metrics: pd.DataFrame) -> pd.DataFrame:
         ]
     ].copy()
     return overlay.sort_values("date").reset_index(drop=True)
+
+
+def _attach_fed_exact_bill_share_support(
+    sector_panel: pd.DataFrame,
+    fed_exact_metrics: pd.DataFrame,
+) -> pd.DataFrame:
+    if sector_panel.empty:
+        out = sector_panel.copy()
+        out["exact_bill_share_support"] = pd.Series(dtype=float)
+        return out
+
+    out = sector_panel.copy()
+    out["exact_bill_share_support"] = pd.NA
+    if fed_exact_metrics.empty:
+        return out
+
+    support = fed_exact_metrics[["date", "bill_share"]].copy()
+    support["date"] = pd.to_datetime(support["date"], errors="coerce")
+    support["sector_key"] = "fed"
+    support = support.rename(columns={"bill_share": "_exact_bill_share_support"})
+    out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out = out.merge(support, on=["date", "sector_key"], how="left")
+    mask = out["_exact_bill_share_support"].notna()
+    out.loc[mask, "exact_bill_share_support"] = out.loc[mask, "_exact_bill_share_support"]
+    out.drop(columns=["_exact_bill_share_support"], inplace=True)
+    return out
+
+
+def _apply_low_identification_overrides(
+    estimated: pd.DataFrame,
+    sector_panel: pd.DataFrame,
+) -> pd.DataFrame:
+    if estimated.empty:
+        return estimated
+
+    out = estimated.copy()
+    out["date"] = pd.to_datetime(out.get("date"), errors="coerce")
+
+    support_cols = [
+        col
+        for col in [
+            "date",
+            "sector_key",
+            "bill_share_observed",
+            "exact_bill_share_support",
+            "revaluation",
+            "sector_family",
+            "concept_risk",
+        ]
+        if col in sector_panel.columns
+    ]
+    if {"date", "sector_key"}.issubset(support_cols):
+        support = sector_panel[support_cols].copy()
+        support["date"] = pd.to_datetime(support["date"], errors="coerce")
+        support = support.drop_duplicates(["date", "sector_key"])
+        support = support.rename(columns={"revaluation": "_raw_revaluation"})
+        out = out.merge(support, on=["date", "sector_key"], how="left")
+    else:
+        out["_raw_revaluation"] = pd.NA
+        if "bill_share_observed" not in out.columns:
+            out["bill_share_observed"] = pd.NA
+        if "exact_bill_share_support" not in out.columns:
+            out["exact_bill_share_support"] = pd.NA
+    if "bill_share_observed" not in out.columns:
+        out["bill_share_observed"] = pd.NA
+    if "exact_bill_share_support" not in out.columns:
+        out["exact_bill_share_support"] = pd.NA
+    if "_raw_revaluation" not in out.columns:
+        out["_raw_revaluation"] = pd.NA
+
+    out["fallback_peer_group"] = out["sector_key"].map(PEER_GROUP_BY_SECTOR)
+    out["fallback_peer_count"] = pd.NA
+    out["fallback_reason"] = pd.NA
+    out["revaluation_source_observed"] = out["_raw_revaluation"].notna()
+
+    signal_std = (
+        pd.to_numeric(out["revaluation_signal_std_window"], errors="coerce")
+        if "revaluation_signal_std_window" in out.columns
+        else pd.Series(np.nan, index=out.index, dtype=float)
+    )
+    low_signal = signal_std.fillna(0.0) <= LOW_SIGNAL_STD_THRESHOLD
+    no_direct_short_end_support = (
+        out["bill_share_observed"].isna()
+        & out["exact_bill_share_support"].isna()
+    )
+    point_origin = (
+        out["point_estimate_origin"].astype(str)
+        if "point_estimate_origin" in out.columns
+        else out.get("method", pd.Series("", index=out.index, dtype=object)).astype(str)
+    )
+    rolling_estimate = point_origin.str.contains("rolling_benchmark_weights", na=False)
+    no_signal_fallback_mask = low_signal & no_direct_short_end_support & rolling_estimate & out["fallback_peer_group"].notna()
+
+    for idx in out.index[no_signal_fallback_mask]:
+        row = out.loc[idx]
+        peers = _peer_rows_for_row(out, row=row, exclude_no_signal=True)
+        if peers.empty:
+            continue
+        peer_count = int(len(peers))
+        out.at[idx, "fallback_peer_count"] = peer_count
+        out.at[idx, "fallback_reason"] = "no_revaluation_signal_no_direct_short_end_support"
+
+        for metric in PEER_ENVELOPE_METRICS:
+            if metric not in out.columns or metric not in peers.columns:
+                continue
+            peer_point = _peer_point_estimate(peers[metric])
+            if peer_point is not None:
+                out.at[idx, metric] = peer_point
+            bounds = _peer_interval_bounds(peers[metric], current_value=peer_point, **PEER_ENVELOPE_METRICS[metric])
+            if bounds is not None:
+                lower_col = f"{metric}_lower"
+                upper_col = f"{metric}_upper"
+                out.at[idx, lower_col] = bounds[0]
+                out.at[idx, upper_col] = bounds[1]
+
+        out.at[idx, "method"] = "peer_group_median_fallback"
+        out.at[idx, "estimator_family"] = "peer_group_pooled_fallback"
+        out.at[idx, "selection_reason"] = (
+            "Sector-specific revaluation evidence is absent, so the release falls back to a same-date peer-group median."
+        )
+        out.at[idx, "point_estimate_origin"] = "peer_group_same_date_median_fallback"
+        out.at[idx, "interval_origin"] = "peer_group_same_date_envelope"
+        out.at[idx, "high_confidence_flag"] = False
+        out.at[idx, "maturity_evidence_tier"] = "D"
+        out.at[idx, "maturity_measurement_basis"] = "peer_group_fallback_inference"
+        out.at[idx, "anchor_type"] = "peer_group_fallback"
+        out.at[idx, "concept_match"] = "proxy"
+        out.at[idx, "uncertainty_band_method"] = "peer_group_same_date_envelope"
+        out.at[idx, "uncertainty_notes"] = (
+            f"Same-date envelope built from peer group `{row['fallback_peer_group']}` because sector-specific revaluation evidence is absent."
+        )
+
+    low_confidence_mask = (
+        ~out.get("high_confidence_flag").fillna(False)
+        & rolling_estimate
+        & out["fallback_peer_group"].notna()
+    )
+    for idx in out.index[low_confidence_mask]:
+        row = out.loc[idx]
+        peers = _peer_rows_for_row(out, row=row, exclude_no_signal=False)
+        if peers.empty:
+            continue
+        out.at[idx, "fallback_peer_count"] = int(len(peers))
+        if pd.isna(out.at[idx, "fallback_reason"]):
+            out.at[idx, "fallback_reason"] = "peer_group_envelope_for_low_confidence_interval"
+
+        for metric in PEER_ENVELOPE_METRICS:
+            if metric not in out.columns or metric not in peers.columns:
+                continue
+            bounds = _peer_interval_bounds(
+                peers[metric],
+                current_value=pd.to_numeric(pd.Series([row.get(metric)]), errors="coerce").iloc[0],
+                **PEER_ENVELOPE_METRICS[metric],
+            )
+            if bounds is None:
+                continue
+            lower_col = f"{metric}_lower"
+            upper_col = f"{metric}_upper"
+            current_lower = pd.to_numeric(pd.Series([out.at[idx, lower_col]]), errors="coerce").iloc[0] if lower_col in out.columns else np.nan
+            current_upper = pd.to_numeric(pd.Series([out.at[idx, upper_col]]), errors="coerce").iloc[0] if upper_col in out.columns else np.nan
+            if not np.isfinite(current_lower) or not np.isfinite(current_upper) or (current_upper - current_lower) > (bounds[1] - bounds[0]):
+                out.at[idx, lower_col] = bounds[0]
+                out.at[idx, upper_col] = bounds[1]
+
+        if "interval_origin" in out.columns and str(out.at[idx, "interval_origin"] or "") != "peer_group_same_date_envelope":
+            out.at[idx, "interval_origin"] = "peer_group_same_date_envelope"
+        if "uncertainty_band_method" in out.columns and str(out.at[idx, "uncertainty_band_method"] or "") != "peer_group_same_date_envelope":
+            out.at[idx, "uncertainty_band_method"] = "peer_group_same_date_envelope"
+        if "uncertainty_notes" in out.columns and pd.isna(out.at[idx, "uncertainty_notes"]):
+            out.at[idx, "uncertainty_notes"] = (
+                f"Low-confidence row uses a same-date peer-group envelope from `{row['fallback_peer_group']}` instead of an unconstrained generic band."
+            )
+
+    if "_raw_revaluation" in out.columns:
+        out.drop(columns=["_raw_revaluation"], inplace=True)
+    return _normalize_low_identification_columns(_sort_release_frame(out))
+
+
+def _normalize_low_identification_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    if "revaluation_source_observed" in out.columns:
+        out["revaluation_source_observed"] = out["revaluation_source_observed"].fillna(False).astype(bool)
+    if "fallback_peer_group" in out.columns:
+        out["fallback_peer_group"] = out["fallback_peer_group"].fillna("not_applicable").astype(str)
+    if "fallback_reason" in out.columns:
+        out["fallback_reason"] = out["fallback_reason"].fillna("not_applicable").astype(str)
+    return out
+
+
+def _peer_rows_for_row(
+    estimated: pd.DataFrame,
+    *,
+    row: pd.Series,
+    exclude_no_signal: bool,
+) -> pd.DataFrame:
+    peer_group = str(row.get("fallback_peer_group") or "").strip()
+    if not peer_group:
+        return estimated.iloc[0:0].copy()
+
+    peers = estimated[
+        estimated["date"].eq(pd.Timestamp(row["date"]))
+        & estimated["sector_key"].astype(str).ne(str(row["sector_key"]))
+        & estimated["fallback_peer_group"].astype(str).eq(peer_group)
+    ].copy()
+    if exclude_no_signal:
+        peer_signal = (
+            pd.to_numeric(peers["revaluation_signal_std_window"], errors="coerce")
+            if "revaluation_signal_std_window" in peers.columns
+            else pd.Series(np.nan, index=peers.index, dtype=float)
+        ).fillna(0.0)
+        peers = peers[
+            (peer_signal > LOW_SIGNAL_STD_THRESHOLD)
+            | peers.get("bill_share_observed").notna()
+            | peers.get("exact_bill_share_support").notna()
+        ].copy()
+    return peers
+
+
+def _peer_point_estimate(values: pd.Series) -> float | None:
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    if numeric.empty:
+        return None
+    return float(numeric.median())
+
+
+def _peer_interval_bounds(
+    values: pd.Series,
+    *,
+    current_value: float | None,
+    margin_floor: float,
+    lower_bound: float | None,
+    upper_bound: float | None,
+) -> tuple[float, float] | None:
+    numeric = pd.to_numeric(values, errors="coerce").dropna().sort_values()
+    if numeric.empty:
+        return None
+
+    if len(numeric) >= 4:
+        lower = float(numeric.quantile(0.2))
+        upper = float(numeric.quantile(0.8))
+    else:
+        lower = float(numeric.min())
+        upper = float(numeric.max())
+
+    if current_value is not None and np.isfinite(current_value):
+        lower = min(lower, float(current_value))
+        upper = max(upper, float(current_value))
+
+    span = max(0.0, upper - lower)
+    margin = max(margin_floor, 0.15 * span)
+    lower -= margin
+    upper += margin
+
+    if lower_bound is not None:
+        lower = max(lower_bound, lower)
+    if upper_bound is not None:
+        upper = min(upper_bound, upper)
+    if lower > upper:
+        lower = upper = min(max(lower, lower_bound or lower), upper_bound or lower)
+    return float(lower), float(upper)
 
 
 def _build_fed_exact_overlay_summary(fed_exact_overlay: pd.DataFrame) -> dict[str, Any]:

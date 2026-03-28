@@ -30,7 +30,18 @@ outputs/
 *.parquet
 *.zip
 
+# Node / frontend
+web/node_modules/
+web/dist/
+
+# Playwright / Vite cache
+.playwright-mcp/
+.vite/
+
 # Editor / OS
 .DS_Store
 .vscode/
 .idea/
+
+# Screenshots / temp
+*.png

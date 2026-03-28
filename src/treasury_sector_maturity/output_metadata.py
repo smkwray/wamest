@@ -30,7 +30,19 @@ def annotate_estimated_output(
     support_panel = sector_panel.copy()
     support_panel["date"] = pd.to_datetime(support_panel.get("date"), errors="coerce")
     panel = support_panel.copy()
-    merge_cols = [col for col in ["date", "sector_key", "label", "method_priority", "warnings", "bill_share_observed"] if col in panel.columns]
+    merge_cols = [
+        col
+        for col in [
+            "date",
+            "sector_key",
+            "label",
+            "method_priority",
+            "warnings",
+            "bill_share_observed",
+            "exact_bill_share_support",
+        ]
+        if col in panel.columns
+    ]
     merge_cols.extend(
         [
             col
@@ -404,7 +416,7 @@ def _annotation_fields(row: pd.Series, *, annotation_mode: str = "default") -> d
         "domestic_direct": "direct_revaluation_inference",
     }
     maturity_tier_map = {
-        "fed": "B",
+        "fed": "A",
         "foreign": "B",
         "bank": "D",
         "bank_proxy": "D",
@@ -933,6 +945,8 @@ def _support_aware_band_notes(sector_class: str, support_source: str) -> str:
         "domestic_direct": "Bands start from empirical SOMA recovery error quantiles and widen for direct revaluation-based inference without observed ladders.",
     }
     note = mapping[sector_class]
+    if support_source == "exact_bill_share_observed":
+        return f"{note} Short-end support is anchored by exact public holdings-based bill shares where available."
     if support_source == "z1_bills_observed":
         return f"{note} Short-end support is anchored by observed Z.1 bills shares."
     if support_source == "foreign_nowcast_short_share":
@@ -1002,9 +1016,18 @@ def _base_bill_share_support_bounds(
     row: pd.Series,
     calibration_profile: dict[str, Any],
 ) -> tuple[float | None, float | None, str]:
+    exact_direct_value = _as_float(row.get("exact_bill_share_support"))
     direct_value = _as_float(row.get("bill_share_observed"))
     direct_half_width = float(calibration_profile["direct_bill_share_half_width"])
     intervals: list[tuple[float, float, str]] = []
+    if not math.isnan(exact_direct_value):
+        intervals.append(
+            (
+                max(0.0, exact_direct_value - direct_half_width),
+                min(1.0, exact_direct_value + direct_half_width),
+                "exact_bill_share_observed",
+            )
+        )
     if not math.isnan(direct_value):
         intervals.append(
             (

@@ -345,7 +345,7 @@ def test_effective_maturity_panel_from_toy_pipeline_inputs():
     ].iloc[0]
     foreign = result[(result["sector_key"] == "foreigners_total") & (result["date"] == foreign_quarter)].iloc[0]
     residual = result[(result["sector_key"] == "domestic_nonbank_residual_broad") & (result["date"] == bank_quarter)].iloc[0]
-    assert fed["maturity_evidence_tier"] == "B"
+    assert fed["maturity_evidence_tier"] == "A"
     assert fed["anchor_type"] == "soma_calibration_context"
     assert fed["point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     assert foreign["anchor_type"] == "shl_slt_anchor"
