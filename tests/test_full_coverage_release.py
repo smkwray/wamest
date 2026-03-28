@@ -290,6 +290,13 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
         "level_fred_id",
         "transactions_source_code",
         "transactions_fred_id",
+        "dependency_series_keys",
+        "dependency_level_source_codes",
+        "dependency_transactions_source_codes",
+        "dependency_revaluation_source_codes",
+        "dependency_level_fred_ids",
+        "dependency_transactions_fred_ids",
+        "dependency_revaluation_fred_ids",
         "source_level_code_present",
         "source_transactions_code_present",
         "source_level_status",
@@ -314,6 +321,13 @@ def test_full_coverage_release_builder_emits_expected_artifacts(tmp_path):
     assert fed_inventory["latest_published_point_estimate_origin"] == "rolling_benchmark_weights_plus_factors"
     life_inventory = inventory[inventory["sector_key"] == "life_insurers"].iloc[0]
     assert life_inventory["source_level_status"] == "absent"
+    credit_union_inventory = inventory[inventory["sector_key"] == "credit_unions_marketable_proxy"].iloc[0]
+    assert credit_union_inventory["source_level_status"] == "computed_proxy"
+    assert credit_union_inventory["dependency_series_keys"] == (
+        "credit_unions_treasuries_corporate, credit_unions_treasuries_excluding_corporate"
+    )
+    assert "FR473061103.Q" in credit_union_inventory["dependency_revaluation_source_codes"]
+    assert "BOGZ1FR473061153Q" in credit_union_inventory["dependency_revaluation_fred_ids"]
     promoted_inventory = inventory[inventory["short_window_origin_rows"] > 0]
     assert not promoted_inventory.empty
     fed_row = canonical[canonical["sector_key"] == "fed"].iloc[0]
@@ -380,6 +394,90 @@ def test_supplement_missing_z1_levels_from_fred_adds_configured_required_level_s
     assert "BOGZ1FL763061100Q" in calls
     assert "BOGZ1FR763061100Q" in calls
     assert any(row["sector_key"] == "bank_us_chartered" for row in summary["supplemented_level_rows"])
+
+
+def test_supplement_missing_z1_levels_from_fred_recurses_computed_proxy_dependencies(monkeypatch):
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    helper = getattr(module, "_supplement_missing_z1_levels_from_fred")
+
+    long_df = pd.DataFrame(columns=["series_code", "date", "value"])
+    catalog = load_series_catalog(FULL_CATALOG)
+    calls: list[str] = []
+
+    def fake_fetch(series_id: str):
+        calls.append(series_id)
+        return {"series_id": series_id}
+
+    def fake_normalize(payload, value_name="value", frequency_suffix=None):
+        return pd.DataFrame({"date": [pd.Timestamp("2025-12-31")], value_name: [1.0]})
+
+    monkeypatch.setattr(module, "fetch_fred_series_observations", fake_fetch)
+    monkeypatch.setattr(module, "normalize_fred_observations", fake_normalize)
+
+    supplemented, summary = helper(
+        long_df=long_df,
+        catalog=catalog,
+        sector_defs_path=FULL_SECTOR_DEFS,
+    )
+
+    supplemented_codes = set(supplemented["series_code"].astype(str))
+    expected_codes = {
+        "FL473061103.Q",
+        "FU473061103.Q",
+        "FR473061103.Q",
+        "FL473061153.Q",
+        "FU473061153.Q",
+        "FR473061153.Q",
+    }
+    assert expected_codes.issubset(supplemented_codes)
+    assert "credit_unions_marketable_proxy" in summary["supplemented_sector_keys"]
+    assert {
+        "BOGZ1FL473061103Q",
+        "BOGZ1FU473061103Q",
+        "BOGZ1FR473061103Q",
+        "BOGZ1FL473061153Q",
+        "BOGZ1FU473061153Q",
+        "BOGZ1FR473061153Q",
+    }.issubset(set(calls))
+
+
+def test_attach_level_source_provenance_marks_computed_proxy_fred_components():
+    module = importlib.import_module("treasury_sector_maturity.full_coverage_release")
+    helper = getattr(module, "_attach_level_source_provenance")
+
+    sector_panel = pd.DataFrame(
+        {
+            "date": [pd.Timestamp("2025-12-31")],
+            "sector_key": ["credit_unions_marketable_proxy"],
+            "level": [1.0],
+        }
+    )
+    sector_definitions = {
+        "credit_unions_marketable_proxy": {
+            "level_series": "credit_unions_marketable_treasury_proxy",
+            "method_priority": ["computed_series_proxy", "revaluation_inference_weak"],
+        }
+    }
+    supplement_summary = {
+        "supplemented_level_rows": [
+            {
+                "date": "2025-12-31",
+                "sector_key": "credit_unions_marketable_proxy",
+                "level_source_provider_used": "fred_level_supplement",
+                "level_supplemented_from_fred": True,
+            }
+        ]
+    }
+
+    out = helper(
+        sector_panel,
+        sector_definitions=sector_definitions,
+        supplement_summary=supplement_summary,
+    )
+
+    row = out.iloc[0]
+    assert row["level_source_provider_used"] == "computed_proxy_fred_components"
+    assert bool(row["level_supplemented_from_fred"]) is True
 
 
 def test_resolve_latest_snapshot_quarter_uses_min_of_per_sector_latest_dates():

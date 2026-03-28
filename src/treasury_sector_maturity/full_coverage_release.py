@@ -624,6 +624,64 @@ def _default_z1_fred_series_id(series_code: str | None) -> str | None:
     return f"BOGZ1{normalized}"
 
 
+def _catalog_expression_dependencies(expression: str | None) -> set[str]:
+    text = _as_text(expression)
+    if text is None:
+        return set()
+    return {token for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text)}
+
+
+def _resolve_catalog_leaf_series_keys(
+    series_key: str | None,
+    catalog: dict[str, Any],
+    *,
+    _seen: set[str] | None = None,
+) -> list[str]:
+    key = _as_text(series_key)
+    if key is None:
+        return []
+    seen = set(_seen or set())
+    if key in seen:
+        return []
+    seen.add(key)
+
+    spec = catalog.get(key)
+    if spec is None:
+        return []
+    expression = _as_text(getattr(spec, "computed", None))
+    if expression is None:
+        return [key]
+
+    leaves: list[str] = []
+    for dependency in sorted(_catalog_expression_dependencies(expression)):
+        leaves.extend(_resolve_catalog_leaf_series_keys(dependency, catalog, _seen=seen))
+    return sorted(set(leaves))
+
+
+def _series_dependency_metadata(
+    series_key: str | None,
+    catalog: dict[str, Any],
+) -> dict[str, str]:
+    leaves = _resolve_catalog_leaf_series_keys(series_key, catalog)
+    leaf_specs = [catalog[key] for key in leaves if key in catalog]
+
+    def _join(values: list[str | None]) -> str | None:
+        normalized = sorted({value for value in (_as_text(item) for item in values) if value})
+        if not normalized:
+            return None
+        return ", ".join(normalized)
+
+    return {
+        "dependency_series_keys": _join(leaves),
+        "dependency_level_source_codes": _join([getattr(spec, "level", None) for spec in leaf_specs]),
+        "dependency_transactions_source_codes": _join([getattr(spec, "transactions", None) for spec in leaf_specs]),
+        "dependency_revaluation_source_codes": _join([getattr(spec, "revaluation", None) for spec in leaf_specs]),
+        "dependency_level_fred_ids": _join([(getattr(spec, "fred_ids", None) or {}).get("level") for spec in leaf_specs]),
+        "dependency_transactions_fred_ids": _join([(getattr(spec, "fred_ids", None) or {}).get("transactions") for spec in leaf_specs]),
+        "dependency_revaluation_fred_ids": _join([(getattr(spec, "fred_ids", None) or {}).get("revaluation") for spec in leaf_specs]),
+    }
+
+
 def _supplement_missing_z1_levels_from_fred(
     *,
     long_df: pd.DataFrame,
@@ -648,7 +706,9 @@ def _supplement_missing_z1_levels_from_fred(
         for field in ("level_series", "bills_series"):
             series_key = _as_text(spec.get(field))
             if series_key:
-                referenced_series_keys.setdefault(sector_key, set()).add(series_key)
+                referenced_series_keys.setdefault(sector_key, set()).update(
+                    _resolve_catalog_leaf_series_keys(series_key, catalog)
+                )
 
     for sector_key, series_keys in sorted(referenced_series_keys.items()):
         for series_key in sorted(series_keys):
@@ -757,6 +817,12 @@ def _attach_level_source_provenance(
     supplement_mask = out["_supplement_level_supplemented_from_fred"].fillna(False).astype(bool)
     out.loc[supplement_mask, "level_source_provider_used"] = out.loc[supplement_mask, "_supplement_level_source_provider_used"]
     out.loc[supplement_mask, "level_supplemented_from_fred"] = True
+    computed_proxy_mask = (
+        supplement_mask
+        & out["sector_key"].astype(str).isin(default_provider_map)
+        & out["sector_key"].astype(str).map(default_provider_map).eq("computed_proxy")
+    )
+    out.loc[computed_proxy_mask, "level_source_provider_used"] = "computed_proxy_fred_components"
     out.drop(
         columns=["_supplement_level_source_provider_used", "_supplement_level_supplemented_from_fred"],
         inplace=True,
@@ -1504,6 +1570,7 @@ def _build_required_sector_inventory(
         bills_series_key = _as_text(sector_spec.get("bills_series"))
         series_spec = catalog.get(level_series_key) if level_series_key else None
         bills_spec = catalog.get(bills_series_key) if bills_series_key else None
+        dependency_metadata = _series_dependency_metadata(level_series_key, catalog)
         base_code = _as_text(getattr(series_spec, "base_code", None)) if series_spec is not None else None
         level_source_code = _as_text(getattr(series_spec, "level", None)) if series_spec is not None else None
         transactions_source_code = _as_text(getattr(series_spec, "transactions", None)) if series_spec is not None else None
@@ -1553,6 +1620,7 @@ def _build_required_sector_inventory(
                 "level_source_code": level_source_code,
                 "transactions_source_code": transactions_source_code,
                 "revaluation_source_code": revaluation_source_code,
+                **dependency_metadata,
                 "level_fred_id": level_fred_id,
                 "transactions_fred_id": transactions_fred_id,
                 "revaluation_fred_id": revaluation_fred_id,

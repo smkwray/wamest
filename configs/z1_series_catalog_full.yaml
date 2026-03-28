@@ -105,9 +105,29 @@ series:
     description: "Credit unions Treasury holdings"
     base_code: "473061105"
 
+  credit_unions_treasuries_excluding_corporate:
+    description: "Credit unions Treasury securities, excluding corporate credit unions"
+    base_code: "473061103"
+    fred_ids:
+      level: "BOGZ1FL473061103Q"
+      transactions: "BOGZ1FU473061103Q"
+      revaluation: "BOGZ1FR473061103Q"
+      other_volume: null
+
+  credit_unions_treasuries_corporate:
+    description: "Credit unions Treasury securities held by corporate credit unions"
+    base_code: "473061153"
+    fred_ids:
+      level: "BOGZ1FL473061153Q"
+      transactions: "BOGZ1FU473061153Q"
+      revaluation: "BOGZ1FR473061153Q"
+      other_volume: null
+
   credit_unions_marketable_treasury_proxy:
     description: "Marketable Treasury proxy for credit unions"
-    computed: "credit_unions_treasuries"
+    computed: "credit_unions_treasuries_excluding_corporate + credit_unions_treasuries_corporate"
+    notes:
+      - "Excludes the NCUA share insurance capitalization deposit embedded in the broad Treasury total."
 
   households_nonprofits_treasuries_residual:
     description: "Households and nonprofits Treasury holdings (residual concept)"

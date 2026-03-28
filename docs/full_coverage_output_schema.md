@@ -109,6 +109,7 @@ Rules:
 
 - contains one row per required canonical sector
 - records the configured level / transactions / revaluation / bills source codes and any configured `fred_ids` fallbacks for each required sector where applicable
+- records dependency lineage for computed proxy series, including the underlying leaf series keys and their level / transactions / revaluation source codes and `fred_ids`
 - records whether those configured source codes are present in the parsed Z.1 source file used for the release
 - records whether the configured level code becomes available after the optional FRED level supplement used by the live full-coverage path
 - records a compact `source_level_status` classification such as `present`, `transactions_only`, `same_base_other_only`, `absent`, or `computed_proxy`
@@ -119,6 +120,8 @@ Rules:
 - records the publication-range span, underlying level/transactions/revaluation row availability, emitted `history_preserving_backfill` usage, short-window estimate/origin counts, and explicit historical `ever_*` usage flags from the canonical artifact
 - distinguishes `latest_emitted_*` fields from `latest_published_*` fields so the common-grid terminal row is not conflated with the latest in-publication-range row
 - records latest-row provenance fields such as point-estimate origin, uncertainty-band origin, and whether the latest published level path was supplemented from FRED
+
+For computed proxies built from FRED-supplemented public components, row-level `level_source_provider_used` may be `computed_proxy_fred_components` rather than a direct raw-source label. This indicates the published level row is a computed proxy assembled from public component series whose leaf level inputs were supplied through the live FRED supplement path.
 
 ## Validation semantics
 
